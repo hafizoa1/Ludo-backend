@@ -1,19 +1,6 @@
 package com.ludo.ludo_server.game.connection;
 
 
-import com.ludo.ludo_server.game.Game;
-import com.ludo.ludo_server.game.input.InputProvider;
-import com.ludo.ludo_server.game.websocket.controller.GameResponse;
-import com.ludo.ludo_server.player.HumanPlayer;
-import com.ludo.ludo_server.player.Player;
-import com.ludo.ludo_server.player.PlayerColor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Component;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 /**
  * GameManager - Central orchestrator for multiplayer game management
  *
@@ -39,6 +26,22 @@ import java.util.concurrent.ConcurrentHashMap;
  * message controller thin and focused only on message routing.
  */
 
+import com.ludo.ludo_server.game.Game;
+import com.ludo.ludo_server.game.input.MultiplayerInputProvider;
+import com.ludo.ludo_server.game.state.GameState;
+import com.ludo.ludo_server.game.websocket.controller.GameResponse;
+import com.ludo.ludo_server.player.HumanPlayer;
+import com.ludo.ludo_server.player.Player;
+import com.ludo.ludo_server.player.PlayerColor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+
+
 @Component
 public class GameManager {
 
@@ -48,18 +51,24 @@ public class GameManager {
     @Autowired
     private SessionMapper sessionMapper;
 
+    @Autowired
+    private StompGameEventBroadcaster broadcaster;
+
     private final Map<String, GameRoom> gameRooms = new ConcurrentHashMap<>();
     private static final int DEFAULT_MAX_PLAYERS = 2;
 
-    // 2-player setup: each player gets 2 colors (like original GameConfig)
+    // 2-player setup: each player gets 2 colors
     private static final List<PlayerColor> PLAYER1_COLORS = List.of(PlayerColor.RED, PlayerColor.YELLOW);
     private static final List<PlayerColor> PLAYER2_COLORS = List.of(PlayerColor.BLUE, PlayerColor.GREEN);
 
+    // =============================================================================
+    // GAME ROOM MANAGEMENT
+    // =============================================================================
+
     public GameResponse createGame(String sessionId) {
         String gameId = gameIdGenerator.generateGameId();
-        GameRoom gameRoom = new GameRoom(gameId, DEFAULT_MAX_PLAYERS);
+        GameRoom gameRoom = new GameRoom(gameId, DEFAULT_MAX_PLAYERS, broadcaster);
 
-        // Add creator as first player (Red + Yellow colors)
         Player creator = new HumanPlayer("player1", "Player 1", PLAYER1_COLORS);
         gameRoom.addPlayer(sessionId, creator);
 
@@ -67,8 +76,7 @@ public class GameManager {
         sessionMapper.addSessionToGame(sessionId, gameId);
 
         return GameResponse.success("GAME_CREATED",
-                "Game " + gameId + " created. Waiting for players (1/" + DEFAULT_MAX_PLAYERS + ")",
-                null);  // Pass null instead of Map for now
+                "Game " + gameId + " created. Waiting for players (1/" + DEFAULT_MAX_PLAYERS + ")");
     }
 
     public GameResponse joinGame(String sessionId, String gameId) {
@@ -82,7 +90,6 @@ public class GameManager {
             return GameResponse.error("GAME_FULL", "Game " + gameId + " is full or already started");
         }
 
-        // Create player with appropriate colors (Blue + Green for second player)
         List<PlayerColor> playerColors = gameRoom.getSessionIds().size() == 0 ? PLAYER1_COLORS : PLAYER2_COLORS;
         int playerNumber = gameRoom.getSessionIds().size() + 1;
         Player player = new HumanPlayer("player" + playerNumber, "Player " + playerNumber, playerColors);
@@ -93,13 +100,12 @@ public class GameManager {
         int currentPlayers = gameRoom.getSessionIds().size();
         String message = "Joined game " + gameId + ". Waiting for players (" + currentPlayers + "/" + DEFAULT_MAX_PLAYERS + ")";
 
-        // Check if game is ready to start
         if (gameRoom.isReady()) {
-            startGame(gameRoom);
+            gameRoom.startGame();
             message = "All players joined! Game starting...";
         }
 
-        return GameResponse.success("JOINED_GAME", message, null);  // Pass null for now - should be game sate
+        return GameResponse.success("JOINED_GAME", message);
     }
 
     public GameResponse leaveGame(String sessionId) {
@@ -113,31 +119,119 @@ public class GameManager {
         if (gameRoom != null) {
             gameRoom.removePlayer(sessionId);
 
-            // Remove empty games
             if (gameRoom.getSessionIds().isEmpty()) {
                 gameRooms.remove(gameId);
             }
         }
 
         sessionMapper.removeSession(sessionId);
-        return GameResponse.success("LEFT_GAME", "Left game " + gameId, null);
+        return GameResponse.success("LEFT_GAME", "Left game " + gameId);
     }
 
-    private void startGame(GameRoom gameRoom) {
-        List<Player> players = new ArrayList<>(gameRoom.getSessionToPlayer().values());
+    // =============================================================================
+    // GAME ACTIONS
+    // =============================================================================
 
-        // Create a dummy InputProvider for multiplayer (won't be used)
-        InputProvider dummyInput = new InputProvider() {
-            public int getChoice(int min, int max, String prompt) { return 0; }
-            public String getName(String prompt) { return ""; }
-            public void sendMessage(String message) {}
-            public void waitForInput(String prompt) {}
-        };
+    public GameResponse handleDiceRoll(String sessionId) {
+        GameRoom gameRoom = getGameRoomBySession(sessionId);
 
-        Game game = new Game(players, dummyInput); // Game constructor needs InputProvider
-        gameRoom.setGame(game);
-        gameRoom.setStatus(GameRoom.GameRoomStatus.IN_PROGRESS);
+        if (gameRoom == null || gameRoom.getGame() == null) {
+            return GameResponse.error("NO_GAME", "No active game found");
+        }
+
+        Game game = gameRoom.getGame();
+        Player currentPlayer = game.getCurrentPlayer();
+        Player requestingPlayer = gameRoom.getPlayer(sessionId);
+
+        if (currentPlayer == null) {
+            return GameResponse.error("GAME_NOT_READY", "Game not ready for dice roll");
+        }
+
+        if (!currentPlayer.equals(requestingPlayer)) {
+            return GameResponse.error("NOT_YOUR_TURN", "It's " + currentPlayer.getPlayerName() + "'s turn");
+        }
+
+        if (game.getInputProvider() instanceof MultiplayerInputProvider) {
+            MultiplayerInputProvider inputProvider = (MultiplayerInputProvider) game.getInputProvider();
+            if (inputProvider.hasPendingRequest(sessionId)) {
+                return GameResponse.error("PENDING_CHOICE",
+                        "You must make a choice before rolling again! Available choices shown above.");
+            }
+        }
+
+        try {
+            game.getDice().roll();
+            int die1 = game.getDice().getDie1();
+            int die2 = game.getDice().getDie2();
+            String playerName = requestingPlayer.getPlayerName();
+
+            GameState gameState = game.getGameState();
+            broadcaster.broadcastToGame(gameRoom.getGameId(),
+                    GameResponse.success("DICE_ROLLED",
+                            playerName + " rolled " + die1 + " and " + die2, gameState));
+
+            CompletableFuture.runAsync(() -> {
+                try {
+                    game.continueAfterDiceRoll();
+                } catch (Exception e) {
+                    System.err.println("Error continuing game after dice roll: " + e.getMessage());
+                }
+            });
+
+            return GameResponse.success("DICE_ROLL_RECEIVED", "Processing dice roll...");
+
+        } catch (Exception e) {
+            return GameResponse.error("DICE_ROLL_ERROR", "Error rolling dice: " + e.getMessage());
+        }
     }
+
+    public GameResponse handlePlayerChoice(String sessionId, int choice) {
+        try {
+            GameRoom gameRoom = getGameRoomBySession(sessionId);
+            if (gameRoom == null || gameRoom.getGame() == null) {
+                return GameResponse.error("NO_GAME", "No active game found");
+            }
+
+            Game game = gameRoom.getGame();
+            if (game.getInputProvider() instanceof MultiplayerInputProvider) {
+                MultiplayerInputProvider inputProvider = (MultiplayerInputProvider) game.getInputProvider();
+
+                if (!inputProvider.hasPendingRequest(sessionId)) {
+                    return GameResponse.error("NO_PENDING_CHOICE", "No choice currently required from you");
+                }
+
+                inputProvider.handlePlayerChoice(sessionId, choice);
+
+                GameState updatedGameState = game.getGameState();
+
+                broadcaster.broadcastToGame(gameRoom.getGameId(),
+                        GameResponse.success("GAME_STATE_UPDATE", "Move executed", updatedGameState));
+
+                return GameResponse.success("CHOICE_RECEIVED", "Choice processed", updatedGameState);
+            }
+
+            return GameResponse.error("INVALID_GAME", "Not a multiplayer game");
+
+        } catch (Exception e) {
+            System.err.println("Error in handlePlayerChoice: " + e.getMessage());
+            return GameResponse.error("INVALID_CHOICE", "Error processing choice: " + e.getMessage());
+        }
+    }
+
+    public GameResponse getGameState(String sessionId) {
+        GameRoom gameRoom = getGameRoomBySession(sessionId);
+
+        if (gameRoom == null || gameRoom.getGame() == null) {
+            return GameResponse.error("NO_GAME", "No active game found");
+        }
+
+        GameState gameState = gameRoom.getGame().getGameState();
+        return GameResponse.success("GAME_STATE", "Current game state", gameState);
+    }
+
+    // =============================================================================
+    // HELPER METHODS
+    // =============================================================================
 
     public GameRoom getGameRoom(String gameId) {
         return gameRooms.get(gameId);
@@ -158,8 +252,6 @@ public class GameManager {
         if (gameRoom == null || gameRoom.getGame() == null) {
             return false;
         }
-
-        // Add turn validation logic here
         return gameRoom.getStatus() == GameRoom.GameRoomStatus.IN_PROGRESS;
     }
 }

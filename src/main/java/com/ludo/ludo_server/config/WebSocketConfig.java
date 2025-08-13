@@ -1,22 +1,69 @@
 package com.ludo.ludo_server.config;
 
-import com.ludo.ludo_server.game.websocket.GameWebSocketHandler;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.socket.config.annotation.EnableWebSocket;
-import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
-import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.simp.config.ChannelRegistration;
+import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.messaging.simp.stomp.StompCommand;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.springframework.messaging.support.ChannelInterceptor;
+import org.springframework.messaging.support.MessageHeaderAccessor;
+import org.springframework.web.socket.config.annotation.*;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+
+import java.util.Collections;
 
 @Configuration
-@EnableWebSocket
-public class WebSocketConfig implements WebSocketConfigurer {
-
-    @Autowired
-    private GameWebSocketHandler gameWebSocketHandler;
+@EnableWebSocketMessageBroker
+public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
-    public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(gameWebSocketHandler, "/game")
+    public void configureMessageBroker(MessageBrokerRegistry config) {
+        // Enable simple broker for topics
+        config.enableSimpleBroker("/topic", "/queue");
+
+        // Set prefix for app destinations
+        config.setApplicationDestinationPrefixes("/app");
+
+        // Optional: Set user-specific prefix
+        config.setUserDestinationPrefix("/user");
+    }
+
+    @Override
+    public void registerStompEndpoints(StompEndpointRegistry registry) {
+        // Main endpoint - supports both raw WebSocket and SockJS
+        registry.addEndpoint("/game")
+                .setAllowedOrigins("*") // Configure for your domains in production
+                .withSockJS(); // SockJS fallback for older browsers
+
+        // Raw WebSocket endpoint (for testing)
+        registry.addEndpoint("/game-ws")
                 .setAllowedOrigins("*");
     }
+
+    /**
+     * This method adds an interceptor to the client inbound channel.
+     * The interceptor's job is to read the 'login' header from the STOMP CONNECT frame
+     * and set the user's Principal for the session.
+     */
+    @Override
+    public void configureClientInboundChannel(ChannelRegistration registration) {
+        registration.interceptors(new ChannelInterceptor() {
+            @Override
+            public Message<?> preSend(Message<?> message, MessageChannel channel) {
+                StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
+                if (StompCommand.CONNECT.equals(accessor.getCommand())) {
+                    String userLogin = accessor.getFirstNativeHeader("login");
+                    if (userLogin != null) {
+                        // Create a Principal object from the user login
+                        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(userLogin, null, Collections.emptyList());
+                        accessor.setUser(auth);
+                    }
+                }
+                return message;
+            }
+        });
+    }
+
 }

@@ -20,6 +20,15 @@ public class GameResponse {
         return response;
     }
 
+    public static GameResponse success(String type, String message) {
+        GameResponse response = new GameResponse();
+        response.success = true;
+        response.type = type;
+        response.message = message;
+        response.data = null;
+        return response;
+    }
+
     public static GameResponse error(String type, String message) {
         GameResponse response = new GameResponse();
         response.success = false;

@@ -5,6 +5,8 @@ import com.ludo.ludo_server.board.Board;
 import com.ludo.ludo_server.board.Position;
 import com.ludo.ludo_server.dice.Dice;
 import com.ludo.ludo_server.game.input.InputProvider;
+import com.ludo.ludo_server.game.input.MultiplayerInputProvider;
+import com.ludo.ludo_server.game.state.GameState;
 import com.ludo.ludo_server.piece.MoveOption;
 import com.ludo.ludo_server.piece.MoveType;
 import com.ludo.ludo_server.piece.Piece;
@@ -13,7 +15,6 @@ import lombok.Data;
 
 import java.util.ArrayList;
 import java.util.List;
-
 
 @Data
 public class Game {
@@ -32,7 +33,10 @@ public class Game {
         this.players = players;
         this.inputProvider = inputProvider;
         this.currentPlayer = players.get(currentPlayerIndex);
-        // TODO: Initialize players list
+    }
+
+    public GameState getGameState() {
+        return new GameState(this);  // That's it! Your GameState constructor does all the work
     }
 
     public boolean isGameOver() {
@@ -50,60 +54,144 @@ public class Game {
         board.printBoard();
         board.printLegend();
 
-        while (!isGameOver()) {
-            Player currentPlayer = players.get(currentPlayerIndex);
-            inputProvider.sendMessage("It's " + currentPlayer.getPlayerName() + "'s turn.\n \"Press anything to roll dice\"");
-            dice.roll();
-            inputProvider.sendMessage(currentPlayer.getPlayerName() + " rolled " + dice.getDie1() + " and " + dice.getDie2());
+        // Initialize first turn but don't auto-play
+        this.currentPlayer = players.get(currentPlayerIndex);
 
-            executePlayerTurn(currentPlayer);
-
-            // Move to next player (unless they rolled a 6)
-            if (!dice.isDoubleSix()) {
-                currentPlayerIndex = (currentPlayerIndex + 1) % players.size();
-            } else {
-                inputProvider.sendMessage(currentPlayer.getPlayerName() + " rolled a Double 6! Goes again!");
-            }
-
-            board.printBoard();
+// Set current player for input provider
+        if (inputProvider instanceof MultiplayerInputProvider) {
+            MultiplayerInputProvider multiInput = (MultiplayerInputProvider) inputProvider;
+            multiInput.setCurrentPlayer(this.currentPlayer);
         }
+
+// Just ask for dice roll - don't roll automatically
+        inputProvider.sendMessage("It's " + this.currentPlayer.getPlayerName() + "'s turn. Send ROLL_DICE to roll the dice.");
+
+// Game now waits for ROLL_DICE WebSocket message
     }
 
+    public void continueAfterDiceRoll() {
+        try {
+            System.out.println("DEBUG: Continuing after dice roll for " + currentPlayer.getPlayerName());
+
+            // Announce dice result
+            //inputProvider.sendMessage(currentPlayer.getPlayerName() + " rolled " + dice.getDie1() + " and " + dice.getDie2());
+
+            // Execute the rest of the turn (show moves, wait for choice, etc.)
+            executePlayerTurn(currentPlayer);
+
+            // Check if game is over after the turn
+            if (isGameOver()) {
+                inputProvider.sendMessage("🎉 " + winner + " has won the game!");
+                System.out.println("DEBUG: Game over! Winner: " + winner);
+                return; // Game ends here
+            }
+
+            // Move to next player (unless they rolled double 6)
+            if (!dice.isDoubleSix()) {
+                int oldPlayerIndex = currentPlayerIndex;
+                currentPlayerIndex = (currentPlayerIndex + 1) % players.size();
+                this.currentPlayer = players.get(currentPlayerIndex);
+                System.out.println("DEBUG: Switched from player " + oldPlayerIndex + " to player " + currentPlayerIndex);
+            } else {
+                inputProvider.sendMessage(currentPlayer.getPlayerName() + " rolled a Double 6! Goes again!");
+                System.out.println("DEBUG: Double 6! " + currentPlayer.getPlayerName() + " plays again");
+            }
+
+            // Validate current player index
+            if (currentPlayerIndex < 0 || currentPlayerIndex >= players.size()) {
+                System.err.println("ERROR: Invalid currentPlayerIndex: " + currentPlayerIndex + " for " + players.size() + " players");
+                currentPlayerIndex = 0; // Reset to first player as fallback
+                this.currentPlayer = players.get(currentPlayerIndex);
+            }
+
+            // Set up next turn
+            if (inputProvider instanceof MultiplayerInputProvider) {
+                MultiplayerInputProvider multiInput = (MultiplayerInputProvider) inputProvider;
+                multiInput.setCurrentPlayer(this.currentPlayer);
+            }
+
+            inputProvider.sendMessage("It's " + this.currentPlayer.getPlayerName() + "'s turn. Send ROLL_DICE to roll the dice.");
+            System.out.println("DEBUG: Set up next turn for " + this.currentPlayer.getPlayerName());
+
+            board.printBoard(); // Show updated board
+
+        } catch (Exception e) {
+            System.err.println("ERROR in continueAfterDiceRoll: " + e.getMessage());
+            e.printStackTrace();
+
+            // Try to recover by resetting to a valid state
+            if (currentPlayerIndex < 0 || currentPlayerIndex >= players.size()) {
+                currentPlayerIndex = 0;
+                this.currentPlayer = players.get(currentPlayerIndex);
+            }
+
+            inputProvider.sendMessage("An error occurred. Continuing with " + this.currentPlayer.getPlayerName() + "'s turn.");
+        }
+    }
     private void executePlayerTurn(Player currentPlayer) {
+        // Set current player for input provider
+        if (inputProvider instanceof MultiplayerInputProvider) {
+            MultiplayerInputProvider multiInput = (MultiplayerInputProvider) inputProvider;
+            multiInput.setCurrentPlayer(currentPlayer);
+        }
+
         // Initialize available dice values at start of turn
-        List<Integer>availableDiceValues = new ArrayList<>();
+        List<Integer> availableDiceValues = new ArrayList<>();
         availableDiceValues.add(dice.getDie1());
         availableDiceValues.add(dice.getDie2());
 
+        System.out.println("DEBUG: Starting turn for " + currentPlayer.getPlayerName());
+        System.out.println("DEBUG: Dice rolled: " + dice.getDie1() + " and " + dice.getDie2());
+        System.out.println("DEBUG: Available dice values: " + availableDiceValues);
 
         // Continue until no more moves possible or player chooses to stop
         while (!availableDiceValues.isEmpty()) {
+            System.out.println("DEBUG: Remaining dice values: " + availableDiceValues);
+
             List<MoveOption> availableMoves = calculatePossibleMoves(currentPlayer, availableDiceValues);
 
+            System.out.println("DEBUG: Found " + availableMoves.size() + " possible moves");
+
             if (availableMoves.isEmpty()) {
-                System.out.println("No more viable moves. Turn ends.");
+                inputProvider.sendMessage("No more viable moves. Turn ends.");
+                System.out.println("DEBUG: No moves available, ending turn");
                 break;
             }
 
+            // Display moves as one batched message
             displayAvailableMoves(availableMoves);
-            System.out.println("Enter game option (1-" + availableMoves.size() + "):");
 
-            int choice = -1;
-            boolean validChoice = false;
+            // Get player choice with proper validation
+            int choice = inputProvider.getChoice(1, availableMoves.size(),
+                    "Enter game option (1-" + availableMoves.size() + ")");
 
-            // Input validation loop
-            inputProvider.getChoice(1, availableMoves.size(),
-                    "Enter game option (1-" + availableMoves.size() + "):");
+            System.out.println("DEBUG: Player chose option " + choice);
 
-                // Execute the chosen move
+            // Validate choice index (extra safety check)
+            if (choice < 1 || choice > availableMoves.size()) {
+                System.err.println("ERROR: Choice " + choice + " is out of bounds for " + availableMoves.size() + " moves");
+                inputProvider.sendMessage("Invalid choice! Please try again.");
+                continue; // Skip this iteration, ask again
+            }
+
+            // Execute the chosen move
             MoveOption selectedMove = availableMoves.get(choice - 1); // Convert to 0-based index
+            System.out.println("DEBUG: Selected move: " + selectedMove.generateDescription());
+            System.out.println("DEBUG: Using dice value: " + selectedMove.getDiceValue());
+
             executeMove(selectedMove);
 
-            availableDiceValues.remove(Integer.valueOf(selectedMove.getDiceValue()));
+            // Remove the used dice value
+            boolean removed = availableDiceValues.remove(Integer.valueOf(selectedMove.getDiceValue()));
+            System.out.println("DEBUG: Removed dice value " + selectedMove.getDiceValue() + " from available dice. Success: " + removed);
+
+            inputProvider.sendMessage("Used die value: " + selectedMove.getDiceValue());
             inputProvider.sendMessage("Remaining dice: " + availableDiceValues);
         }
-            // Remove the used die value
+
+        System.out.println("DEBUG: Turn completed for " + currentPlayer.getPlayerName());
     }
+
 
     private void executeMove(MoveOption move) {
         Piece piece = move.getPiece();
@@ -141,10 +229,13 @@ public class Game {
     }
 
     private void displayAvailableMoves(List<MoveOption> moves) {
-        inputProvider.sendMessage("Available moves:");
+        StringBuilder movesList = new StringBuilder("Available moves:\n");
         for (int i = 0; i < moves.size(); i++) {
-            inputProvider.sendMessage((i + 1) + ". " + moves.get(i).generateDescription());
+            movesList.append((i + 1)).append(". ").append(moves.get(i).generateDescription()).append("\n");
         }
+
+        // Send as ONE message instead of multiple
+        inputProvider.sendMessage(movesList.toString());
     }
 
 
@@ -293,6 +384,4 @@ public class Game {
         // Use piece number to get correct home position (R1 = index 0, R2 = index 1, etc.)
         return homeCoords[piece.getNumber() - 1];
     }
-
-
 }

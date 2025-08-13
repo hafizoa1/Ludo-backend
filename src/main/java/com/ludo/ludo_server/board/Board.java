@@ -45,7 +45,7 @@ public class Board {
                 new Position(2, 11), new Position(2, 12), // G1, G2
                 new Position(3, 11), new Position(3, 12)  // G3, G4
         });
-        initialHomeYardCoords.put(PlayerColor.YELLOW, new Position[]{ // where blue is put yellow and where yellow is put blue
+        initialHomeYardCoords.put(PlayerColor.YELLOW, new Position[]{
                 new Position(11, 11), new Position(11, 12), // B1, B2
                 new Position(12, 11), new Position(12, 12)  // B3, B4
         });
@@ -128,7 +128,7 @@ public class Board {
      * Set up colored entry points where pieces enter the main track
      * These are colored but capturable - any piece can land here
      */
-    private void setupColoredEntryPoints() { // change yellow and blue
+    private void setupColoredEntryPoints() {
         grid[6][1] = SquareType.RED_TRACK;     // Red entry point
         grid[1][8] = SquareType.GREEN_TRACK;   // Green entry point
         grid[8][13] = SquareType.YELLOW_TRACK;   // Blue entry point
@@ -139,7 +139,7 @@ public class Board {
      * Set up safe home columns (final approach lanes)
      * Only that color's pieces can enter these
      */
-    private void setupSafeHomeColumns() { // change yellow and blue
+    private void setupSafeHomeColumns() {
         // RED safe column (row 7, moving right toward center)
         for (int col = 1; col <= 5; col++) {
             grid[7][col] = SquareType.RED_SAFE;
@@ -185,18 +185,6 @@ public class Board {
 
     // ========== PUBLIC INTERFACE METHODS ==========
 
-    /**
-     * Get the square type at given coordinates
-     * @param row row coordinate (vertical)
-     * @param col column coordinate (horizontal)
-     * @return SquareType at that position, or EMPTY if invalid coordinates
-     */
-    public SquareType getSquareType(int row, int col) {
-        if (isValidPosition(row, col)) {
-            return grid[row][col];
-        }
-        return SquareType.EMPTY;
-    }
 
     /**
      * Check if coordinates are within the board boundaries
@@ -228,7 +216,7 @@ public class Board {
 
     public void removePiece(Piece piece) {
         Position position = piece.getBoardPosition();
-        if (position != null && isValidPosition(position.getRow(), position.getCol())) {
+        if (position != null && isValidPosition(position.row(), position.col())) {
             List<Piece> piecesAtPosition = piecePositions.get(position);
             if (piecesAtPosition != null) {
                 piecesAtPosition.remove(piece);
@@ -262,16 +250,6 @@ public class Board {
     }
 
 
-
-    /**
-     * Check if there's a piece at the given position
-     * @param row row coordinate (vertical)
-     * @param col column coordinate (horizontal)
-     * @return true if position is occupied
-     */
-    public boolean isOccupied(int row, int col) {
-        return !getPiecesAt(row, col).isEmpty();
-    }
 
     /**
      * Get all current piece positions (for display purposes)
