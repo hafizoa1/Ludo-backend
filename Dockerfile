@@ -30,4 +30,5 @@ EXPOSE 8080
 
 # Run the application
 # Use exec form to handle signals properly
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Bind to 0.0.0.0 instead of localhost for Fly.io
+ENTRYPOINT ["java", "-Dserver.address=0.0.0.0", "-jar", "app.jar"]

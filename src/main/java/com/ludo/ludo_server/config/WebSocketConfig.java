@@ -39,6 +39,11 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         // Parse allowed origins from properties file
         String[] origins = allowedOrigins.split(",");
 
+        // Log the CORS origins being used
+        System.out.println("=====================================");
+        System.out.println("🔒 CORS ALLOWED ORIGINS: " + allowedOrigins);
+        System.out.println("=====================================");
+
         // Main endpoint with SockJS fallback
         registry.addEndpoint("/game")
                 .setAllowedOriginPatterns(origins)
