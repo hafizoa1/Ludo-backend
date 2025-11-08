@@ -4,9 +4,11 @@ package com.ludo.ludo_server.game;
 import com.ludo.ludo_server.board.Board;
 import com.ludo.ludo_server.board.Position;
 import com.ludo.ludo_server.dice.Dice;
+import com.ludo.ludo_server.game.connection.StompGameEventBroadcaster;
 import com.ludo.ludo_server.game.input.InputProvider;
 import com.ludo.ludo_server.game.input.MultiplayerInputProvider;
 import com.ludo.ludo_server.game.state.GameState;
+import com.ludo.ludo_server.game.websocket.controller.GameResponse;
 import com.ludo.ludo_server.piece.MoveOption;
 import com.ludo.ludo_server.piece.MoveType;
 import com.ludo.ludo_server.piece.Piece;
@@ -15,6 +17,8 @@ import lombok.Data;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import static com.ludo.ludo_server.game.websocket.controller.ResponseType.*;
 
 @Data
 public class Game {
@@ -25,14 +29,19 @@ public class Game {
     private int currentPlayerIndex;
     private Player currentPlayer;
     private String winner;
+    private StompGameEventBroadcaster broadcaster;
+    private String gameId;
 
-    public Game(List<Player> players, InputProvider inputProvider) {
+    public Game(List<Player> players, InputProvider inputProvider,
+                StompGameEventBroadcaster broadcaster, String gameId) {
         this.board = new Board(players);
         this.dice = new Dice();
         this.currentPlayerIndex = 0;
         this.players = players;
         this.inputProvider = inputProvider;
         this.currentPlayer = players.get(currentPlayerIndex);
+        this.broadcaster = broadcaster;  // ADD THIS
+        this.gameId = gameId;
     }
 
     public GameState getGameState() {
@@ -61,6 +70,7 @@ public class Game {
         if (inputProvider instanceof MultiplayerInputProvider) {
             MultiplayerInputProvider multiInput = (MultiplayerInputProvider) inputProvider;
             multiInput.setCurrentPlayer(this.currentPlayer);
+            multiInput.sendTurnNotification("It's your turn. Send ROLL_DICE to roll the dice.");
         }
 
 // Just ask for dice roll - don't roll automatically
@@ -108,6 +118,7 @@ public class Game {
             if (inputProvider instanceof MultiplayerInputProvider) {
                 MultiplayerInputProvider multiInput = (MultiplayerInputProvider) inputProvider;
                 multiInput.setCurrentPlayer(this.currentPlayer);
+                multiInput.sendTurnNotification("It's your turn. Send ROLL_DICE to roll the dice.");
             }
 
             inputProvider.sendMessage("It's " + this.currentPlayer.getPlayerName() + "'s turn. Send ROLL_DICE to roll the dice.");
@@ -128,6 +139,7 @@ public class Game {
             inputProvider.sendMessage("An error occurred. Continuing with " + this.currentPlayer.getPlayerName() + "'s turn.");
         }
     }
+
     private void executePlayerTurn(Player currentPlayer) {
         // Set current player for input provider
         if (inputProvider instanceof MultiplayerInputProvider) {
@@ -159,7 +171,7 @@ public class Game {
             }
 
             // Display moves as one batched message
-            displayAvailableMoves(availableMoves);
+             displayAvailableMoves(availableMoves);
 
             // Get player choice with proper validation
             int choice = inputProvider.getChoice(1, availableMoves.size(),
@@ -181,6 +193,13 @@ public class Game {
 
             executeMove(selectedMove);
 
+            if (broadcaster != null && gameId != null) {
+                GameState currentState = getGameState();
+                broadcaster.broadcastToGame(gameId,
+                        GameResponse.success(GAME_STATE_UPDATE, "Move executed", currentState));
+            }
+
+
             // Remove the used dice value
             boolean removed = availableDiceValues.remove(Integer.valueOf(selectedMove.getDiceValue()));
             System.out.println("DEBUG: Removed dice value " + selectedMove.getDiceValue() + " from available dice. Success: " + removed);
@@ -196,9 +215,10 @@ public class Game {
     private void executeMove(MoveOption move) {
         Piece piece = move.getPiece();
         int diceValue = move.getDiceValue();
+        Player movingPlayer = move.getPlayer();
 
         // Use Game's movePiece method (handles captures)
-        movePiece(piece, diceValue);
+        movePiece(piece, movingPlayer,  diceValue);
 
         inputProvider.sendMessage("Used die value: " + diceValue);
     }
@@ -211,7 +231,7 @@ public class Game {
         if (availableDice.contains(6)) {
             List<Piece> homePieces = currentPlayer.getHomePieces();
             for (Piece piece : homePieces) {
-                moveOptions.add(new MoveOption(piece, 6, MoveType.BRING_OUT));
+                moveOptions.add(new MoveOption(currentPlayer, piece, 6, MoveType.BRING_OUT));
             }
         }
 
@@ -220,7 +240,7 @@ public class Game {
         for (Piece piece : activePieces) {
             for (Integer diceValue : availableDice) {
                 if (piece.canMove(diceValue)) {
-                    moveOptions.add(new MoveOption(piece, diceValue, MoveType.NORMAL));
+                    moveOptions.add(new MoveOption(currentPlayer, piece, diceValue, MoveType.NORMAL));
                 }
             }
         }
@@ -234,15 +254,22 @@ public class Game {
             movesList.append((i + 1)).append(". ").append(moves.get(i).generateDescription()).append("\n");
         }
 
-        // Send as ONE message instead of multiple
-        inputProvider.sendMessage(movesList.toString());
+        // Send to current player's personal queue only (not broadcast)
+        if (inputProvider instanceof MultiplayerInputProvider) {
+            MultiplayerInputProvider multiInput = (MultiplayerInputProvider) inputProvider;
+            multiInput.sendMoveOptions(movesList.toString(), moves.size());
+            System.out.println(movesList);
+        } else {
+            // Fallback for non-multiplayer
+            inputProvider.sendMessage(movesList.toString());
+        }
     }
 
 
     /**
      * Move a piece and handle all game logic (movement, captures, etc.)
      */
-    public Position movePiece(Piece piece, int diceValue) {
+    public Position movePiece(Piece piece, Player movingPlayer, int diceValue) {
         if (piece == null) {
             System.err.println("Cannot move a null piece.");
             return null;
@@ -255,7 +282,7 @@ public class Game {
         if (!oldPosition.equals(newPosition)) {
 
             // Remove from old position
-            board.removePiece(oldPosition.getRow(), oldPosition.getCol());
+            board.removePiece(oldPosition.row(), oldPosition.col()); /// WHY DONT WE SAY IF PIECE.NEWPOSITION
 
             // Update board position tracking
             if (piece.isFinished()) {
@@ -263,10 +290,10 @@ public class Game {
                 board.placePiece(piece, 7, 7);
             } else {
                 // Normal placement
-                board.placePiece(piece, newPosition.getRow(), newPosition.getCol());
+                board.placePiece(piece, newPosition.row(), newPosition.col());
 
                 // Check for captures at the new position
-                checkForCaptures(piece, newPosition);
+                checkForCaptures(movingPlayer, piece, newPosition);
             }
             return newPosition;
         } else {
@@ -277,8 +304,8 @@ public class Game {
     /**
      * Check if the moved piece can capture any pieces at its new position
      */
-    private void checkForCaptures(Piece movingPiece, Position position) {
-        List<Piece> piecesAtPosition = board.getPiecesAt(position.getRow(), position.getCol());
+    private void checkForCaptures(Player player, Piece movingPiece, Position position) {
+        List<Piece> piecesAtPosition = board.getPiecesAt(position.row(), position.col());
 
         // Early exit if no other pieces at this position
         if (piecesAtPosition.isEmpty() || piecesAtPosition.size() == 1) {
@@ -288,7 +315,7 @@ public class Game {
         // Find all pieces that can be captured
         List<Piece> capturablePieces = new ArrayList<>();
         for (Piece otherPiece : piecesAtPosition) {
-            if (movingPiece.canCapture(otherPiece)) {
+            if (movingPiece.canCapture(player, otherPiece)) {
                 capturablePieces.add(otherPiece);
             }
         }
@@ -332,6 +359,11 @@ public class Game {
      * Execute a capture - send captured piece home
      */
     private void capturePiece(Piece capturingPiece, Piece capturedPiece) {
+        // Guard clause - no captures involving finished pieces
+        if (capturingPiece.isFinished() || capturedPiece.isFinished()) {
+            return; // No capture possible
+        }
+
         // Remove captured piece from current position
         board.removePiece(capturedPiece);
 
@@ -341,7 +373,7 @@ public class Game {
         // Send captured piece back to its home
         sendPieceHome(capturedPiece);
 
-        // Send capturing piece to finished position
+        // Send capturing piece to finished position (your custom rule)
         sendPieceToFinished(capturingPiece);
 
         inputProvider.sendMessage("💥 " + capturingPiece.getId() + " captured " + capturedPiece.getId() + "!");
@@ -371,7 +403,7 @@ public class Game {
         piece.sendHome(homePosition); // Sets pathPosition = -1 and board position
 
         // Place piece back on board at home
-        board.placePiece(piece, homePosition.getRow(), homePosition.getCol());
+        board.placePiece(piece, homePosition.row(), homePosition.col());
 
         inputProvider.sendMessage(piece.getId() + " was sent home to " + homePosition);
     }

@@ -2,29 +2,29 @@ package com.ludo.ludo_server.piece;
 
 
 import com.ludo.ludo_server.board.Position;
+import com.ludo.ludo_server.player.Player;
+import lombok.Getter;
 
 public class MoveOption {
-    private Piece piece;
-    private int diceValue;
-    private MoveType moveType;
-    private Position targetPosition;
-    private String description;
+
+    @Getter
+    private final Player player;
+    @Getter
+    private final Piece piece;
+    @Getter
+    private final int diceValue;
+    private final MoveType moveType;
+    private final Position targetPosition;
+    private final String description;
 
     // Constructor for normal moves and bringing out pieces
-    public MoveOption(Piece piece, int diceValue, MoveType moveType) {
+    public MoveOption(Player player, Piece piece, int diceValue, MoveType moveType) {
         this.piece = piece;
+        this.player = player;
         this.diceValue = diceValue;
         this.moveType = moveType;
         this.targetPosition = calculateTargetPosition();
         this.description = generateDescription();
-    }
-
-    public Piece getPiece() {
-        return piece;
-    }
-
-    public int getDiceValue() {
-        return diceValue;
     }
 
     // Calculate where the piece would end up after this move

@@ -86,51 +86,6 @@ public enum SquareType {
      */
     EMPTY;
 
-    /**
-     * Check if this square type is playable for piece movement
-     * @return true if pieces can move to/through this square type
-     */
-    public boolean isPlayable() {
-        return this == WHITE || this == RED_TRACK || this == GREEN_TRACK ||
-                this == BLUE_TRACK || this == YELLOW_TRACK ||
-                this == RED_SAFE || this == GREEN_SAFE ||
-                this == BLUE_SAFE || this == YELLOW_SAFE;
-    }
-
-    /**
-     * Check if this square type is a colored track space (capturable)
-     * @return true if this is a colored track square where captures can happen
-     */
-    public boolean isColoredTrack() {
-        return this == RED_TRACK || this == GREEN_TRACK ||
-                this == BLUE_TRACK || this == YELLOW_TRACK;
-    }
-
-    /**
-     * Check if this square type is a safe home column
-     * @return true if this is a safe home column where only one color can enter
-     */
-    public boolean isSafeColumn() {
-        return this == RED_SAFE || this == GREEN_SAFE ||
-                this == BLUE_SAFE || this == YELLOW_SAFE;
-    }
-
-    /**
-     * Check if this square type is a home area (starting yard)
-     * @return true if this is any player's home area
-     */
-    public boolean isHomeArea() {
-        return this == RED_HOME_AREA || this == GREEN_HOME_AREA ||
-                this == BLUE_HOME_AREA || this == YELLOW_HOME_AREA;
-    }
-
-    /**
-     * Check if this square type is a storage area (not for movement)
-     * @return true if this is any home area or middle area
-     */
-    public boolean isStorageArea() {
-        return isHomeArea() || this == MIDDLE_AREA;
-    }
 
     /**
      * Get the display character for console output
@@ -155,31 +110,6 @@ public enum SquareType {
             case MIDDLE_AREA: return '*';            // Center finish area
             case EMPTY: return ' ';                  // Empty grid space
             default: return '?';
-        }
-    }
-
-    /**
-     * Get compact boxed display for terminal board printing
-     * @return compact boxed character representation
-     */
-    public String getCompactDisplay() {
-        switch (this) {
-            case WHITE: return "[. ]";
-            case RED_TRACK: return "[r ]";
-            case GREEN_TRACK: return "[g ]";
-            case BLUE_TRACK: return "[b ]";
-            case YELLOW_TRACK: return "[y ]";
-            case RED_SAFE: return "[R ]";
-            case GREEN_SAFE: return "[G ]";
-            case BLUE_SAFE: return "[B ]";
-            case YELLOW_SAFE: return "[Y ]";
-            case RED_HOME_AREA: return "[h ]";
-            case GREEN_HOME_AREA: return "[h ]";
-            case BLUE_HOME_AREA: return "[h ]";
-            case YELLOW_HOME_AREA: return "[h ]";
-            case MIDDLE_AREA: return "[* ]";
-            case EMPTY: return "   ";
-            default: return "[?]";
         }
     }
 

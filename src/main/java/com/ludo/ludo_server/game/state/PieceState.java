@@ -14,7 +14,6 @@ public class PieceState {
     private int pathPosition;
     private boolean isAtHome;
     private boolean isFinished;
-    private boolean isInSafeZone;
 
     public PieceState(Piece piece) {
         this.id = piece.getId();
@@ -24,7 +23,6 @@ public class PieceState {
         this.pathPosition = piece.getPathPosition();
         this.isAtHome = piece.isAtHome();
         this.isFinished = piece.isFinished();
-        this.isInSafeZone = piece.isInSafeZone();
     }
 
 }

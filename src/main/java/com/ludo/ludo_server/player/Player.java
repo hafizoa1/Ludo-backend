@@ -61,7 +61,7 @@ public abstract class Player {
 
         for (Piece piece : allPieces) {
             // Assuming 'isActive()' is a method on your Piece class
-            // or you have logic here to determine if a piece is active (e.g., not HOME_BASE, not FINISHED)
+            // ,or you have logic here to determine if a piece is active (e.g., not HOME_BASE, not FINISHED)
             if (piece.getPathPosition() != -1) {
                 activePieces.add(piece);
             }
@@ -112,7 +112,7 @@ public abstract class Player {
      * @return true if all pieces have reached the finish
      */
     public boolean hasWon() {
-        return getFinishedPieces().size() == PIECES_PER_PLAYER;
+        return getFinishedPieces().size() == pieces.length;
     }
 
     /**

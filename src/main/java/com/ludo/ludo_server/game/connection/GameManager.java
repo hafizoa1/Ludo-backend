@@ -41,6 +41,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static com.ludo.ludo_server.game.websocket.controller.ResponseType.*;
+
 
 @Component
 public class GameManager {
@@ -75,7 +77,7 @@ public class GameManager {
         gameRooms.put(gameId, gameRoom);
         sessionMapper.addSessionToGame(sessionId, gameId);
 
-        return GameResponse.success("GAME_CREATED",
+        return GameResponse.success(GAME_CREATED,
                 "Game " + gameId + " created. Waiting for players (1/" + DEFAULT_MAX_PLAYERS + ")");
     }
 
@@ -83,11 +85,11 @@ public class GameManager {
         GameRoom gameRoom = gameRooms.get(gameId);
 
         if (gameRoom == null) {
-            return GameResponse.error("GAME_NOT_FOUND", "Game " + gameId + " not found");
+            return GameResponse.error(GAME_NOT_FOUND, "Game " + gameId + " not found");
         }
 
         if (!gameRoom.canJoin()) {
-            return GameResponse.error("GAME_FULL", "Game " + gameId + " is full or already started");
+            return GameResponse.error(GAME_FULL, "Game " + gameId + " is full or already started");
         }
 
         List<PlayerColor> playerColors = gameRoom.getSessionIds().size() == 0 ? PLAYER1_COLORS : PLAYER2_COLORS;
@@ -105,14 +107,14 @@ public class GameManager {
             message = "All players joined! Game starting...";
         }
 
-        return GameResponse.success("JOINED_GAME", message);
+        return GameResponse.success(JOINED_GAME, message);
     }
 
     public GameResponse leaveGame(String sessionId) {
         String gameId = sessionMapper.getGameId(sessionId);
 
         if (gameId == null) {
-            return GameResponse.error("NO_GAME", "You are not in any game");
+            return GameResponse.error(NO_GAME, "You are not in any game");
         }
 
         GameRoom gameRoom = gameRooms.get(gameId);
@@ -125,7 +127,7 @@ public class GameManager {
         }
 
         sessionMapper.removeSession(sessionId);
-        return GameResponse.success("LEFT_GAME", "Left game " + gameId);
+        return GameResponse.success(LEFT_GAME, "Left game " + gameId);
     }
 
     // =============================================================================
@@ -136,7 +138,7 @@ public class GameManager {
         GameRoom gameRoom = getGameRoomBySession(sessionId);
 
         if (gameRoom == null || gameRoom.getGame() == null) {
-            return GameResponse.error("NO_GAME", "No active game found");
+            return GameResponse.error(NO_GAME, "No active game found");
         }
 
         Game game = gameRoom.getGame();
@@ -144,31 +146,29 @@ public class GameManager {
         Player requestingPlayer = gameRoom.getPlayer(sessionId);
 
         if (currentPlayer == null) {
-            return GameResponse.error("GAME_NOT_READY", "Game not ready for dice roll");
+            return GameResponse.error(GAME_NOT_READY, "Game not ready for dice roll");
         }
 
         if (!currentPlayer.equals(requestingPlayer)) {
-            return GameResponse.error("NOT_YOUR_TURN", "It's " + currentPlayer.getPlayerName() + "'s turn");
+            return GameResponse.error(NOT_YOUR_TURN, "It's " + currentPlayer.getPlayerName() + "'s turn");
         }
 
         if (game.getInputProvider() instanceof MultiplayerInputProvider) {
             MultiplayerInputProvider inputProvider = (MultiplayerInputProvider) game.getInputProvider();
             if (inputProvider.hasPendingRequest(sessionId)) {
-                return GameResponse.error("PENDING_CHOICE",
+                return GameResponse.error(PENDING_CHOICE,
                         "You must make a choice before rolling again! Available choices shown above.");
             }
         }
 
         try {
             game.getDice().roll();
-            int die1 = game.getDice().getDie1();
-            int die2 = game.getDice().getDie2();
-            String playerName = requestingPlayer.getPlayerName();
+            String die1 = String.valueOf(game.getDice().getDie1());
+            String die2 = String.valueOf(game.getDice().getDie2());
 
-            GameState gameState = game.getGameState();
             broadcaster.broadcastToGame(gameRoom.getGameId(),
-                    GameResponse.success("DICE_ROLLED",
-                            playerName + " rolled " + die1 + " and " + die2, gameState));
+                    GameResponse.success(DICE_ROLLED,
+                            (die1 + die2), null));
 
             CompletableFuture.runAsync(() -> {
                 try {
@@ -178,10 +178,10 @@ public class GameManager {
                 }
             });
 
-            return GameResponse.success("DICE_ROLL_RECEIVED", "Processing dice roll...");
+            return GameResponse.success(DICE_ROLL_RECEIVED, "Processing dice roll...");
 
         } catch (Exception e) {
-            return GameResponse.error("DICE_ROLL_ERROR", "Error rolling dice: " + e.getMessage());
+            return GameResponse.error(DICE_ROLL_ERROR, "Error rolling dice: " + e.getMessage());
         }
     }
 
@@ -189,7 +189,7 @@ public class GameManager {
         try {
             GameRoom gameRoom = getGameRoomBySession(sessionId);
             if (gameRoom == null || gameRoom.getGame() == null) {
-                return GameResponse.error("NO_GAME", "No active game found");
+                return GameResponse.error(NO_GAME, "No active game found");
             }
 
             Game game = gameRoom.getGame();
@@ -197,24 +197,24 @@ public class GameManager {
                 MultiplayerInputProvider inputProvider = (MultiplayerInputProvider) game.getInputProvider();
 
                 if (!inputProvider.hasPendingRequest(sessionId)) {
-                    return GameResponse.error("NO_PENDING_CHOICE", "No choice currently required from you");
+                    return GameResponse.error(NO_PENDING_CHOICE, "No choice currently required from you");
                 }
 
                 inputProvider.handlePlayerChoice(sessionId, choice);
 
-                GameState updatedGameState = game.getGameState();
+                //GameState updatedGameState = game.getGameState();
 
-                broadcaster.broadcastToGame(gameRoom.getGameId(),
-                        GameResponse.success("GAME_STATE_UPDATE", "Move executed", updatedGameState));
+                //broadcaster.broadcastToGame(gameRoom.getGameId(),
+                       // GameResponse.success("GAME_STATE_UPDATE", "Move executed", updatedGameState));
 
-                return GameResponse.success("CHOICE_RECEIVED", "Choice processed", updatedGameState);
+                return GameResponse.success(CHOICE_RECEIVED, "Choice processed", null);
             }
 
-            return GameResponse.error("INVALID_GAME", "Not a multiplayer game");
+            return GameResponse.error(INVALID_GAME, "Not a multiplayer game");
 
         } catch (Exception e) {
             System.err.println("Error in handlePlayerChoice: " + e.getMessage());
-            return GameResponse.error("INVALID_CHOICE", "Error processing choice: " + e.getMessage());
+            return GameResponse.error(INVALID_CHOICE, "Error processing choice: " + e.getMessage());
         }
     }
 
@@ -222,11 +222,11 @@ public class GameManager {
         GameRoom gameRoom = getGameRoomBySession(sessionId);
 
         if (gameRoom == null || gameRoom.getGame() == null) {
-            return GameResponse.error("NO_GAME", "No active game found");
+            return GameResponse.error(NO_GAME, "No active game found");
         }
 
         GameState gameState = gameRoom.getGame().getGameState();
-        return GameResponse.success("GAME_STATE", "Current game state", gameState);
+        return GameResponse.success(GAME_STATE, "Current game state", gameState);
     }
 
     // =============================================================================

@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static com.ludo.ludo_server.game.websocket.controller.ResponseType.*;
+
 /**
  * Temporary InputProvider for multiplayer games
  * This bridges the Game class with the WebSocket system
@@ -52,35 +54,25 @@ public class MultiplayerInputProvider implements InputProvider {
             return min;
         }
 
-        // VALIDATION LOOP - just like original game!
         while (true) {
             try {
                 CompletableFuture<Integer> future = new CompletableFuture<>();
                 pendingChoices.put(sessionId, future);
 
-                // Send choice request with current game state
-                GameState currentGameState = gameRoom.getGame().getGameState();
-                String fullPrompt = prompt + " (Options: " + min + "-" + max + ")";
-                GameResponse choiceRequest = GameResponse.success("INPUT_REQUIRED", fullPrompt, currentGameState);
-                broadcaster.sendToSession(sessionId, choiceRequest);
+                // DON'T send another message - the move options were already sent
+                // Just wait for the response
+                System.out.println("Waiting for choice from " + player.getPlayerName() + " (move options already sent)");
 
-                System.out.println("Sent choice request to " + player.getPlayerName() + ": " + fullPrompt);
-
-                // Wait for player response
                 Integer choice = future.get();
 
-                // VALIDATE THE CHOICE - this was missing!
                 if (choice >= min && choice <= max) {
                     System.out.println("Valid choice " + choice + " from " + player.getPlayerName());
-                    return choice; // Valid choice, return it
+                    return choice;
                 } else {
-                    // Invalid choice - send error and ask again
                     System.out.println("Invalid choice " + choice + " from " + player.getPlayerName() + ". Expected: " + min + "-" + max);
-
-                    broadcaster.sendToSession(sessionId,
-                            GameResponse.error("INVALID_CHOICE",
+                    broadcaster.sendToPlayer(sessionId,
+                            GameResponse.error(INVALID_CHOICE,
                                     "Invalid choice " + choice + "! Please enter a number between " + min + " and " + max));
-                    // Loop continues to ask again...
                 }
 
             } catch (Exception e) {
@@ -113,7 +105,7 @@ public class MultiplayerInputProvider implements InputProvider {
             // Get current game state to send with the input request
             GameState currentGameState = gameRoom.getGame().getGameState();
 
-            GameResponse inputRequest = GameResponse.success("INPUT_REQUIRED", prompt, currentGameState);
+            GameResponse inputRequest = GameResponse.success(INPUT_REQUIRED, prompt, currentGameState);
             broadcaster.sendToSession(sessionId, inputRequest);
 
             System.out.println("Sent input request to " + player.getPlayerName() + " (" + sessionId + "): " + prompt);
@@ -131,7 +123,7 @@ public class MultiplayerInputProvider implements InputProvider {
     public void sendMessage(String message) {
         // Broadcast game messages to all players in the game
         broadcaster.broadcastToGame(gameId,
-                GameResponse.success("GAME_MESSAGE", message, null));
+                GameResponse.success(GAME_MESSAGE, message, null));
 
         System.out.println("GAME MESSAGE [" + gameId + "]: " + message);
     }
@@ -156,6 +148,29 @@ public class MultiplayerInputProvider implements InputProvider {
         }
     }
 
+    public void sendMoveOptions(String moveMessage, int max) {
+        Player player = currentPlayer.get();
+        if (player == null) {
+            System.err.println("No current player set for move options!");
+            return;
+        }
+
+        String sessionId = gameRoom.getSessionIdForPlayer(player);
+        if (sessionId == null) {
+            System.err.println("Could not find session for player: " + player.getPlayerName());
+            return;
+        }
+
+        // Add the choice prompt to the move message
+        String fullMessage = moveMessage + "\nEnter game option (1-" + max + ")";
+
+        // Send complete move list + prompt to current player's personal queue only
+        broadcaster.sendToPlayer(sessionId,
+                GameResponse.success(MOVE_OPTIONS, fullMessage, null));
+
+        System.out.println("Move options sent to " + player.getPlayerName() + " (" + sessionId + ")");
+    }
+
     public void handlePlayerInput(String sessionId, String input) {
         CompletableFuture<String> future = pendingInputs.remove(sessionId);
         if (future != null) {
@@ -175,6 +190,26 @@ public class MultiplayerInputProvider implements InputProvider {
 
     public boolean hasPendingRequest(String sessionId) {
         return pendingChoices.containsKey(sessionId) || pendingInputs.containsKey(sessionId);
+    }
+
+    public void sendTurnNotification(String message) {
+        Player player = currentPlayer.get();
+        if (player == null) {
+            System.err.println("No current player set for turn notification!");
+            return;
+        }
+
+        String sessionId = gameRoom.getSessionIdForPlayer(player);
+        if (sessionId == null) {
+            System.err.println("Could not find session for player: " + player.getPlayerName());
+            return;
+        }
+
+        // Send ONLY to current player's personal queue
+        broadcaster.sendToPlayer(sessionId,
+                GameResponse.success(YOUR_TURN, message, null));
+
+        System.out.println("📤 Turn notification sent to " + player.getPlayerName() + " (" + sessionId + "): " + message);
     }
 
     // Clear any stuck requests (for cleanup)

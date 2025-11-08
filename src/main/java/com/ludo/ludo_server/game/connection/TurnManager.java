@@ -24,6 +24,7 @@ package com.ludo.ludo_server.game.connection;
  */
 
 import com.ludo.ludo_server.player.Player;
+import lombok.Getter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +33,8 @@ public class TurnManager {
 
     private List<String> playerOrder;           // Order of player sessionIds
     private int currentPlayerIndex;             // Index of current player
+    // Getters
+    @Getter
     private GamePhase currentPhase;             // Current phase of the turn
     private List<Integer> availableDiceValues;  // Dice values available to use
     private boolean hasRolledDouble6;           // Track if player rolled double 6
@@ -132,11 +135,6 @@ public class TurnManager {
         if (playerOrder.isEmpty()) return null;
         int nextIndex = (currentPlayerIndex + 1) % playerOrder.size();
         return playerOrder.get(nextIndex);
-    }
-
-    // Getters
-    public GamePhase getCurrentPhase() {
-        return currentPhase;
     }
 
     public List<Integer> getAvailableDiceValues() {

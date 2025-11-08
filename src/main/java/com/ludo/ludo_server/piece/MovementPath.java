@@ -1,7 +1,5 @@
 package com.ludo.ludo_server.piece;
 
-
-
 import com.ludo.ludo_server.board.Position;
 import com.ludo.ludo_server.player.PlayerColor;
 
@@ -11,13 +9,12 @@ import java.util.Map;
 
 import static com.ludo.ludo_server.board.Board.initialHomeYardCoords;
 
-
 /**
  * MovementPath class - Manages and provides the pre-defined movement paths
  * for all player colors in the Ludo game.
  * This class acts as a central, static repository for all path data.
  */
-public class MovementPath { // changfe movement paths for red and yellow
+public class MovementPath {
 
     // A static map to hold all initialized paths, mapped by PlayerColor
     private static final Map<PlayerColor, Map<Integer, Position>> allColorPaths = new HashMap<>();
@@ -44,7 +41,9 @@ public class MovementPath { // changfe movement paths for red and yellow
         allColorPaths.put(PlayerColor.GREEN, createGreenPath());
         allColorPaths.put(PlayerColor.BLUE, createBluePath());
         allColorPaths.put(PlayerColor.YELLOW, createYellowPath());
+
     }
+
 
     /**
      * Public static method to retrieve the complete movement path for a given color.
@@ -61,6 +60,8 @@ public class MovementPath { // changfe movement paths for red and yellow
         }
         return Collections.unmodifiableMap(allColorPaths.get(color));
     }
+
+
 
     /**
      * Public static method to get the specific Position (row, col)
@@ -82,7 +83,6 @@ public class MovementPath { // changfe movement paths for red and yellow
             // MovementPath doesn't know which specific yard slot it is.
             // The Board or Piece should explicitly set this when a piece is sent home.
             // Returning null here will signal that this path cannot provide a coordinate for -1.
-            //initialHomeYardCoords.get(color);
             return null;
         }
 
@@ -91,10 +91,9 @@ public class MovementPath { // changfe movement paths for red and yellow
     }
 
     public static Position getCoordinateAt(int pieceNumber, PlayerColor color) {
-       Position[] homePositions =  initialHomeYardCoords.get(color);
-       return homePositions[pieceNumber - 1]; // lets start with one
+        Position[] homePositions =  initialHomeYardCoords.get(color);
+        return homePositions[pieceNumber - 1]; // lets start with one
     }
-
 
     // --- Private Static Methods for Creating Individual Color Paths ---
     // These methods encapsulate the complex logic of defining each color's specific path.
@@ -157,18 +156,17 @@ public class MovementPath { // changfe movement paths for red and yellow
         }
 
         // Segment 11: Move LEFT along row 8 (8,5) → (8,1) - This is the last square before entering Red's safe path
-        for (int col = 5; col >= 1; col--) {
+        for (int col = 5; col >= 0; col--) {
             redPath.put(i++, new Position(8, col));
         }
 
-        // RED SAFE COLUMN: Move RIGHT along row 7 (7,1) → (7,6)
-        // These are the 6 safe squares for red.
-        for (int col = 1; col <= 6; col++) {
+        // RED SAFE ROW: Move RIGHT along row 7 (7,1) → (7,5) - 5 safe squares
+        for (int col = 0; col <= 5; col++) {
             redPath.put(i++, new Position(7, col));
         }
 
-        // Finish Point: (7,7) - The very last position a piece lands on.
-        redPath.put(i++, new Position(7, 7)); // This will be pathPosition 56 if MAX_PATH_POSITION is 55.
+        redPath.put(i, new Position(7, 7));
+
 
         // Return an unmodifiable map to ensure the path cannot be altered after creation
         return Collections.unmodifiableMap(redPath);
@@ -232,17 +230,17 @@ public class MovementPath { // changfe movement paths for red and yellow
         }
 
         // Segment 11: Move UP along column 6 (5,6) → (1,6) - Last square before Green's safe path
-        for (int row = 5; row >= 1; row--) {
+        for (int row = 5; row >= 0; row--) {
             greenPath.put(i++, new Position(row, 6));
         }
 
-        // GREEN SAFE COLUMN: Move DOWN along column 7 (1,7) → (6,7)
-        for (int row = 1; row <= 6; row++) {
+        // GREEN SAFE COLUMN: Move DOWN along column 7 (1,7) → (5,7) - 5 safe squares
+        for (int row = 0; row <= 5; row++) {
             greenPath.put(i++, new Position(row, 7));
         }
 
-        // Finish Point: (7,7)
-        greenPath.put(i++, new Position(7, 7));
+        // Finish Point: (7,7) - PathPosition 54
+        greenPath.put(i, new Position(7, 7));
 
         return Collections.unmodifiableMap(greenPath);
     }
@@ -251,7 +249,7 @@ public class MovementPath { // changfe movement paths for red and yellow
         HashMap<Integer, Position> yellowPath = new HashMap<>();
         int i = 0;
 
-        // BLUE STARTS AT (8,13) - Blue entry point on main track (PathPosition 0)
+        // YELLOW STARTS AT (8,13) - Yellow entry point on main track (PathPosition 0)
         yellowPath.put(i++, new Position(8, 13));
 
         // Segment 1: Move LEFT along row 8 (8,12) → (8,9)
@@ -304,24 +302,18 @@ public class MovementPath { // changfe movement paths for red and yellow
             yellowPath.put(i++, new Position(row, 8));
         }
 
-        // Segment 11: Move RIGHT along row 6 (6,9) → (6,14)
+        // Segment 11: Move RIGHT along row 6 (6,9) → (6,13) - Stop at (6,13) to enter safe area
         for (int col = 9; col <= 14; col++) {
             yellowPath.put(i++, new Position(6, col));
         }
 
-        // Segment 12: Move DOWN from (6,14) to (7,14), then LEFT along row 7 (7,13) → (7,9)
-        yellowPath.put(i++, new Position(7, 14));
-        for (int col = 13; col >= 9; col--) {
+        // YELLOW SAFE ROW: Move DOWN then LEFT along row 7 (7,13) → (7,8) - 6 safe squares
+        for (int col = 14; col >= 9; col--) {
             yellowPath.put(i++, new Position(7, col));
         }
 
-        // BLUE SAFE ROW: Move LEFT along row 7 from (7,13) → (7,8)
-        for (int col = 13; col >= 8; col--) {
-            yellowPath.put(i++, new Position(7, col));
-        }
-
-        // Finish Point: (7,7) - The very last position a piece lands on.
-        yellowPath.put(i++, new Position(7, 7));
+        // Finish Point: (7,7) - PathPosition 54
+        yellowPath.put(i, new Position(7, 7));
 
         return Collections.unmodifiableMap(yellowPath);
     }
@@ -330,7 +322,7 @@ public class MovementPath { // changfe movement paths for red and yellow
         HashMap <Integer, Position> bluePath = new HashMap<>();
         int i = 0;
 
-        // YELLOW STARTS AT (13,6) - Blue entry point on main track (PathPosition 0)
+        // BLUE STARTS AT (13,6) - Blue entry point on main track (PathPosition 0)
         bluePath.put(i++, new Position(13, 6));
 
         // Segment 1: Move UP along column 6 (12,6) → (9,6)
@@ -358,6 +350,9 @@ public class MovementPath { // changfe movement paths for red and yellow
             bluePath.put(i++, new Position(row, 6));
         }
 
+        // FIXED: Add missing position (0,6) before moving to (0,7)
+        bluePath.put(i++, new Position(0, 6));
+
         // Segment 6: Move RIGHT along row 0 (0,7) → (0,8)
         for (int col = 7; col <= 8; col++) {
             bluePath.put(i++, new Position(0, col));
@@ -384,19 +379,17 @@ public class MovementPath { // changfe movement paths for red and yellow
         }
 
         // Segment 11: Move DOWN along column 8 (9,8) → (13,8) - Last square before Blue's safe path
-        for (int row = 9; row <= 13; row++) {
+        for (int row = 9; row <= 14; row++) {
             bluePath.put(i++, new Position(row, 8));
         }
 
-
-        // Corrected YELLOW SAFE COLUMN: Move UP along column 7 (13,7) → (8,7)
-        for (int row = 13; row >= 8; row--) { // Move UP row 13 down to row 8 in col 7
+        // BLUE SAFE COLUMN: Move UP along column 7 (13,7) → (10,7) - 4 safe squares
+        for (int row = 14; row >= 9; row--) {
             bluePath.put(i++, new Position(row, 7));
         }
 
-
-        // Finish Point: (7,7)
-        bluePath.put(i++, new Position(7, 7));
+        // Finish Point: (7,7) - PathPosition 53
+        bluePath.put(i, new Position(7, 7));
 
         return Collections.unmodifiableMap(bluePath);
     }

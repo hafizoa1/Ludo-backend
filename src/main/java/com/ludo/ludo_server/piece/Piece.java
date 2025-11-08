@@ -3,8 +3,10 @@ package com.ludo.ludo_server.piece;
 
 
 import com.ludo.ludo_server.board.Position;
+import com.ludo.ludo_server.player.Player;
 import com.ludo.ludo_server.player.PlayerColor;
 
+import java.util.Arrays;
 import java.util.Objects;
 
 /**
@@ -76,21 +78,21 @@ public class Piece {
         // 3. Calculate potential new position.
         int potentialNewPathPosition = this.pathPosition + diceValue;
 
-        // 4. Cannot overshoot the finish line (must land exactly on MAX_PATH_POSITION).
-        if (potentialNewPathPosition > MAX_PATH_POSITION) {
+        // 4. Cannot overshoot the finish line.
+        if (potentialNewPathPosition > FINISHED_POSITION) {
             System.out.println(this.id + " cannot move " + diceValue + " steps (overshot finish line). Stays at " + this.pathPosition);
             return currentBoardPosition; // Piece stays at current position
         }
 
-        // 5. If it lands exactly on MAX_PATH_POSITION, it's finished.
-        if (potentialNewPathPosition == MAX_PATH_POSITION) {
-            this.pathPosition = FINISHED_POSITION; // Mark as finished
-            updateBoardPosition(); // Update coordinates (e.g., to (7,7) or a "finished" visual spot)
-            System.out.println(this.id + " finished the game!");
+        // 5. If it lands exactly on FINISHED_POSITION, they finish!
+        if (potentialNewPathPosition == FINISHED_POSITION) {
+            this.pathPosition = FINISHED_POSITION; // Set to 57
+            updateBoardPosition(); // This should handle FINISHED_POSITION and place at [7,7]
+            System.out.println(this.id + " can finish game!");
             return currentBoardPosition;
         }
 
-        // If all checks pass, update the path position and board coordinates
+        // If all checks pass, update the path position and board coordinates normally
         this.pathPosition = potentialNewPathPosition;
         updateBoardPosition();
 
@@ -111,21 +113,19 @@ public class Piece {
      * Only works for `pathPosition` >= 0. For home position (-1),
      * `setBoardPosition` must be used explicitly.
      */
-    public void updateBoardPosition() {// piece updates board and not board updating piece
-        if (this.pathPosition >= 0) { // Only query MovementPath for on-board positions
+    public void updateBoardPosition() {
+        if (this.pathPosition == FINISHED_POSITION) {
+            this.currentBoardPosition = new Position(7, 7); // Piece at finish center
+        } else if (this.pathPosition >= 0) { // Only query MovementPath for valid path positions (0-56)
             Position newBoardPos = MovementPath.getCoordinateAt(this.color, this.pathPosition);
             if (newBoardPos != null) {
                 this.currentBoardPosition = newBoardPos;
             } else {
                 System.err.println("Error: Could not determine board position for " + this.id +
                         " at pathPosition " + this.pathPosition + " (returned null from MovementPath).");
-                // Fallback: If MovementPath returns null for a valid pathPosition, something is wrong with the path definition.
-                // For now, keep current position or handle as an error.
             }
-        } else if (this.pathPosition == FINISHED_POSITION) {
-            this.currentBoardPosition = new Position(7,7); // Piece lands in the center
         }
-        // If pathPosition is -1 (home), currentBoardPosition should already be set by sendHome/Board setup.
+        // If pathPosition is -1 (home), currentBoardPosition should already be set
     }
 
     /**
@@ -156,16 +156,22 @@ public class Piece {
      * @param otherPiece The piece to potentially capture.
      * @return true if this piece can capture the other piece, false otherwise.
      */
-    public boolean canCapture(Piece otherPiece) {
+    public boolean canCapture(Player player, Piece otherPiece) {
+
+
         // A piece cannot capture itself or a piece of the same color.
         if (this.equals(otherPiece) || this.color == otherPiece.color) {
             return false;
         }
 
+        //A piece cnnot capture another if they have the same player
+        if (Arrays.asList(player.getPieces()).contains(otherPiece)) {
+            return false;
+        }
+
         // Pieces at home or finished cannot be captured or capture.
         if (this.isAtHome() || this.isFinished() ||
-                otherPiece.isAtHome() || otherPiece.isFinished() ||
-                otherPiece.isInSafeZone()) { // Pieces in safe zones cannot be captured
+                otherPiece.isAtHome() || otherPiece.isFinished()) { // Pieces in safe zones cannot be captured
             return false;
         }
 
@@ -193,17 +199,9 @@ public class Piece {
             return false;
         }
 
-        // Calculate potential new position.
         int potentialNewPathPosition = this.pathPosition + diceValue;
-
-        // Rule: Cannot overshoot the finish line (if exact roll is required).
-        // If it overshoots MAX_PATH_POSITION, it cannot move.
-        if (potentialNewPathPosition > MAX_PATH_POSITION) {
-            return false;
-        }
-
-        // Further rules can be added here (e.g., blocked by own piece on path)
-        return true;
+        // Fix: Check against FINISHED_POSITION, not MAX_PATH_POSITION
+        return potentialNewPathPosition <= FINISHED_POSITION;
     }
 
     // ========== GETTERS AND SETTERS ==========
@@ -256,18 +254,6 @@ public class Piece {
      */
     public boolean isFinished() {
         return pathPosition == FINISHED_POSITION;
-    }
-
-    /**
-     * Check if piece is in its safe column (home stretch before the center).
-     * This range depends on your specific path definition.
-     * @return true if piece is in the safe area.
-     */
-    public boolean isInSafeZone() {
-        // Assuming the last 6 squares *before* the final (7,7) are safe.
-        // If MAX_PATH_POSITION is 55, then positions 49 through 54 are safe.
-        // pathPosition must be at least 0 to be in a safe zone on the board.
-        return pathPosition >= 0 && pathPosition >= (MAX_PATH_POSITION - 6) && pathPosition < MAX_PATH_POSITION;
     }
 
 
@@ -337,17 +323,6 @@ public class Piece {
         return Objects.hash(id); // Hash code based on unique ID
     }
 
-    /**
-     * Creates a shallow copy of this piece.
-     * Useful for game state snapshots or speculative moves.
-     * @return A new Piece instance with the same current properties.
-     */
-    public Piece copy() {
-        Piece copy = new Piece(this.color, this.number); // Calls constructor, sets home initially
-        copy.setPathPosition(this.pathPosition); // This will then update its board coords
-        copy.setBoardPosition(this.currentBoardPosition); // Ensure board position is also copied
-        return copy;
-    }
 
     public Position getStartingPosition() {
         return MovementPath.getCoordinateAt(this.color, 0);

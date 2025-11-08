@@ -1,6 +1,6 @@
 package com.ludo.ludo_server.game.websocket;
 
-import com.ludo.ludo_server.game.connection.StompGameEventBroadcaster;
+
 import com.ludo.ludo_server.game.websocket.controller.GameResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.ludo.ludo_server.game.connection.GameManager;
@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 
 import java.security.Principal;
 import java.util.Map;
+
+import static com.ludo.ludo_server.game.websocket.controller.ResponseType.*;
 
 @Controller
 public class GameStompController {
@@ -49,7 +51,7 @@ public class GameStompController {
         // If successful join, notify all players in the game
         if (response.isSuccess()) {
             messagingTemplate.convertAndSend("/topic/game/" + gameId + "/players",
-                    GameResponse.success("PLAYER_JOINED", "New player joined"));
+                    GameResponse.success(PLAYER_JOINED, "New player joined", response.getData()));
         }
 
         return response;
@@ -64,19 +66,16 @@ public class GameStompController {
         String sessionId = user.getName();
         System.out.println("📨 [" + sessionId + "] Roll dice request");
 
-        // Use your existing game manager logic!
-        GameResponse response = gameManager.handleDiceRoll(sessionId);
+        try {
+            // Handle the dice roll
+            GameResponse response = gameManager.handleDiceRoll(sessionId);
 
-        // Send response back to requesting player
-        messagingTemplate.convertAndSendToUser(sessionId, "/queue/response", response);
-
-        // If successful, broadcast to all players in the game
-        if (response.isSuccess() && response.getData() != null) {
-            String gameId = getGameIdForSession(sessionId);
-            if (gameId != null) {
-                messagingTemplate.convertAndSend("/topic/game/" + gameId + "/dice",
-                        GameResponse.success("DICE_ROLLED", response.getMessage(), response.getData()));
-            }
+            // Send a personal response to the user about their roll request
+            messagingTemplate.convertAndSendToUser(sessionId, "/queue/response", response);
+        } catch (Exception e) {
+            // Handle any unexpected errors
+            GameResponse errorResponse = GameResponse.error(ROLL_ERROR, "Unexpected error during dice roll");
+            messagingTemplate.convertAndSendToUser(sessionId, "/queue/response", errorResponse);
         }
     }
 
@@ -102,7 +101,7 @@ public class GameStompController {
             String gameId = getGameIdForSession(sessionId);
             if (gameId != null) {
                 messagingTemplate.convertAndSend("/topic/game/" + gameId + "/moves",
-                        GameResponse.success("MOVE_EXECUTED", response.getMessage(), response.getData()));
+                        GameResponse.success(MOVE_EXECUTED, response.getMessage(), response.getData()));
             }
         }
     }

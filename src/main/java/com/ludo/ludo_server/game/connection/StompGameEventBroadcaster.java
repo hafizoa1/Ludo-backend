@@ -15,6 +15,8 @@ public class StompGameEventBroadcaster { //dDELETE NORMAL GAME EVENT BROADCASTER
     public void broadcastToGame(String gameId, GameResponse response) {
         messagingTemplate.convertAndSend("/topic/game/" + gameId + "/events", response);
         System.out.println("📤 Broadcast to game " + gameId + ": " + response.getType());
+        System.out.println(response);
+        System.out.println("\n\n\n");
     }
 
     public void sendToSession(String sessionId, GameResponse response) {
@@ -27,23 +29,4 @@ public class StompGameEventBroadcaster { //dDELETE NORMAL GAME EVENT BROADCASTER
         System.out.println("📤 Send to player " + sessionId + ": " + response.getType());
     }
 
-    // Broadcast dice results
-    public void broadcastDiceRoll(String gameId, GameResponse response) {
-        messagingTemplate.convertAndSend("/topic/game/" + gameId + "/dice", response);
-    }
-
-    // Broadcast move results
-    public void broadcastMove(String gameId, GameResponse response) {
-        messagingTemplate.convertAndSend("/topic/game/" + gameId + "/moves", response);
-    }
-
-    // Broadcast turn changes
-    public void broadcastTurnChange(String gameId, GameResponse response) {
-        messagingTemplate.convertAndSend("/topic/game/" + gameId + "/turns", response);
-    }
-
-    // Broadcast game state updates
-    public void broadcastGameState(String gameId, GameResponse response) {
-        messagingTemplate.convertAndSend("/topic/game/" + gameId + "/state", response);
-    }
 }

@@ -1,0 +1,32 @@
+package com.ludo.ludo_server.game.websocket.controller;
+
+public enum ResponseType {
+    GAME_STARTED,
+    GAME_CREATED,
+    GAME_NOT_FOUND,
+    GAME_FULL,
+    JOINED_GAME,
+    NO_GAME,
+    LEFT_GAME,
+    GAME_NOT_READY,
+    GAME_STATE,
+    INVALID_STATE,
+    CHOICE_RECEIVED,
+    NOT_YOUR_TURN,
+    DICE_ROLL_RECEIVED,
+    GAME_STATE_UPDATE,
+    PENDING_CHOICE,
+    INVALID_CHOICE,
+    INPUT_REQUIRED,
+    GAME_MESSAGE,
+    MOVE_OPTIONS,
+    NO_PENDING_CHOICE,
+    INVALID_GAME,
+    DICE_ROLLED,
+    DICE_ROLL_ERROR,
+    DICE_RECEIVED,
+    YOUR_TURN,
+    MOVE_EXECUTED,
+    ROLL_ERROR,
+    PLAYER_JOINED
+}

@@ -29,6 +29,7 @@ import com.ludo.ludo_server.game.state.GameState;
 import com.ludo.ludo_server.game.websocket.controller.GameResponse;
 import com.ludo.ludo_server.player.Player;
 import lombok.Data;
+import lombok.Getter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -36,13 +37,17 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static com.ludo.ludo_server.game.websocket.controller.ResponseType.GAME_STARTED;
+
 @Data
 public class GameRoom {
 
     private final String gameId;
     private final List<String> sessionIds;
     private final Map<String, Player> sessionToPlayer;
+    @Getter
     private Game game;
+
     private TurnManager turnManager;
     private GameRoomStatus status;
     private final int maxPlayers;
@@ -91,7 +96,7 @@ public class GameRoom {
         // Pass 'this' (the GameRoom) to the input provider
         MultiplayerInputProvider inputProvider = new MultiplayerInputProvider(this.gameId, this.broadcaster, this);
 
-        this.game = new Game(players, inputProvider);
+        this.game = new Game(players, inputProvider, broadcaster, gameId);
         this.status = GameRoomStatus.IN_PROGRESS;
 
         // Rest stays the same...
@@ -100,7 +105,7 @@ public class GameRoom {
                 Thread.sleep(500);
                 GameState initialState = game.getGameState();
                 broadcaster.broadcastToGame(gameId,
-                        GameResponse.success("GAME_STATE_UPDATE", "Game started", initialState));
+                        GameResponse.success(GAME_STARTED, "Game started", initialState));
                 game.startGame();
             } catch (Exception e) {
                 System.err.println("Game error: " + e.getMessage());
@@ -109,10 +114,6 @@ public class GameRoom {
         });
 
         System.out.println("Game started for room: " + gameId);
-    }
-
-    public Game getGame() {
-        return game;
     }
 
     public Player getPlayer(String sessionId) {

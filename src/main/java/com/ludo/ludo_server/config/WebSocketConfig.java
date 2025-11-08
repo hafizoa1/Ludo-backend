@@ -1,5 +1,6 @@
 package com.ludo.ludo_server.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -18,6 +19,9 @@ import java.util.Collections;
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
+    @Value("${allowed.origins}")
+    private String allowedOrigins;
+
     @Override
     public void configureMessageBroker(MessageBrokerRegistry config) {
         // Enable simple broker for topics
@@ -32,14 +36,17 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        // Main endpoint - supports both raw WebSocket and SockJS
-        registry.addEndpoint("/game")
-                .setAllowedOrigins("*") // Configure for your domains in production
-                .withSockJS(); // SockJS fallback for older browsers
+        // Parse allowed origins from properties file
+        String[] origins = allowedOrigins.split(",");
 
-        // Raw WebSocket endpoint (for testing)
+        // Main endpoint with SockJS fallback
+        registry.addEndpoint("/game")
+                .setAllowedOriginPatterns(origins)
+                .withSockJS();
+
+        // Raw WebSocket endpoint (for testing/advanced clients)
         registry.addEndpoint("/game-ws")
-                .setAllowedOrigins("*");
+                .setAllowedOriginPatterns(origins);
     }
 
     /**

@@ -25,9 +25,6 @@ public class Board {
     // Track which pieces are at which positions - Key: Board.Position, Value: Piece
     private final Map<Position, List<Piece>> piecePositions;
 
-    // Stores all pieces managed by the board (for easy retrieval by ID, etc.)
-    //private final List<Piece> allPieces;
-
     // Define fixed home yard positions for each piece.
     // These are the *display* coordinates for pieces at home.
     // MovementPath.getCoordinateAt(color, -1) should return these or map to them.
@@ -46,12 +43,12 @@ public class Board {
                 new Position(3, 11), new Position(3, 12)  // G3, G4
         });
         initialHomeYardCoords.put(PlayerColor.YELLOW, new Position[]{
-                new Position(11, 11), new Position(11, 12), // B1, B2
-                new Position(12, 11), new Position(12, 12)  // B3, B4
+                new Position(11, 11), new Position(11, 12), // Y1, Y2
+                new Position(12, 11), new Position(12, 12)  // Y3, Y4
         });
         initialHomeYardCoords.put(PlayerColor.BLUE, new Position[]{
-                new Position(11, 2), new Position(11, 3), // Y1, Y2
-                new Position(12, 2), new Position(12, 3)  // Y3, Y4
+                new Position(11, 2), new Position(11, 3), // B1, B2
+                new Position(12, 2), new Position(12, 3)  // B3, B4
         });
     }
 
@@ -62,7 +59,7 @@ public class Board {
         this.grid = new SquareType[BOARD_SIZE][BOARD_SIZE];
         this.piecePositions = new HashMap<>();
         initializeBoardLayout();
-        placePiecesFromPlayers(players); // Instead of setupPieces()
+        placePiecesFromPlayers(players);
     }
 
 
@@ -109,17 +106,17 @@ public class Board {
             }
         }
 
-        // YELLOW home area (bottom-left corner)
+        // Blue home area (bottom-left corner)
         for (int row = 9; row < 15; row++) {
             for (int col = 0; col < 6; col++) {
-                grid[row][col] = SquareType.BLUE_HOME_AREA; // make this blue
+                grid[row][col] = SquareType.BLUE_HOME_AREA;
             }
         }
 
-        // BLUE home area (bottom-right corner)
+        // Yellow home area (bottom-right corner)
         for (int row = 9; row < 15; row++) {
             for (int col = 9; col < 15; col++) {
-                grid[row][col] = SquareType.YELLOW_HOME_AREA; // make this yellow
+                grid[row][col] = SquareType.YELLOW_HOME_AREA;
             }
         }
     }
@@ -131,8 +128,8 @@ public class Board {
     private void setupColoredEntryPoints() {
         grid[6][1] = SquareType.RED_TRACK;     // Red entry point
         grid[1][8] = SquareType.GREEN_TRACK;   // Green entry point
-        grid[8][13] = SquareType.YELLOW_TRACK;   // Blue entry point
-        grid[13][6] = SquareType.BLUE_TRACK; // Yellow entry point
+        grid[8][13] = SquareType.YELLOW_TRACK;   // Yellow entry point
+        grid[13][6] = SquareType.BLUE_TRACK; // Blue entry point
     }
 
     /**
@@ -150,12 +147,12 @@ public class Board {
             grid[row][7] = SquareType.GREEN_SAFE;
         }
 
-        // BLUE safe column (row 7, moving left toward center)
+        // YELLOW safe column (row 7, moving left toward center)
         for (int col = 9; col <= 13; col++) {
             grid[7][col] = SquareType.YELLOW_SAFE;
         }
 
-        // YELLOW safe column (col 7, moving up toward center)
+        // BLUE safe column (col 7, moving up toward center)
         for (int row = 9; row <= 13; row++) {
             grid[row][7] = SquareType.BLUE_SAFE;
         }
@@ -177,7 +174,9 @@ public class Board {
         for (Player player : players) {
             for (Piece piece : player.getPieces()) {
                 Position homePos = piece.getBoardPosition();
-                piecePositions.computeIfAbsent(homePos, k -> new ArrayList<>()).add(piece);
+                piecePositions.computeIfAbsent(homePos,
+                        k -> new ArrayList<>())
+                        .add(piece);
             }
         }
     }

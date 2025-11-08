@@ -35,3 +35,21 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Logs ###
+*.log
+*.log.*
+logs/
+replay_*.log
+hs_err_*.log
+
+### OS ###
+.DS_Store
+Thumbs.db
+
+### Node (for test files) ###
+node_modules/
+package-lock.json
+
+### Local environment files ###
+application-local.properties

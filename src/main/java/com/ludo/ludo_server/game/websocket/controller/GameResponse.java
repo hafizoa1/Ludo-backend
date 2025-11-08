@@ -6,12 +6,12 @@ import lombok.Data;
 @Data
 public class GameResponse {
     private boolean success;
-    private String type;
-    private String message;
+    private ResponseType type;
+    private String message; 
     private GameState data;
     private String error;
 
-    public static GameResponse success(String type, String message, GameState data) {
+    public static GameResponse success(ResponseType type, String message, GameState data) {
         GameResponse response = new GameResponse();
         response.success = true;
         response.type = type;
@@ -20,7 +20,7 @@ public class GameResponse {
         return response;
     }
 
-    public static GameResponse success(String type, String message) {
+    public static GameResponse success(ResponseType type, String message) {
         GameResponse response = new GameResponse();
         response.success = true;
         response.type = type;
@@ -29,7 +29,7 @@ public class GameResponse {
         return response;
     }
 
-    public static GameResponse error(String type, String message) {
+    public static GameResponse error(ResponseType type, String message) {
         GameResponse response = new GameResponse();
         response.success = false;
         response.type = type;

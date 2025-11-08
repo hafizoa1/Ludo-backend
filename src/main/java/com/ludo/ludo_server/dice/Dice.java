@@ -1,5 +1,7 @@
 package com.ludo.ludo_server.dice;
 
+import lombok.Getter;
+
 import java.util.Random;
 
 /**
@@ -9,46 +11,32 @@ import java.util.Random;
 public class Dice { // we want to calculate if the die is used or not
 
     private final Random random;
+    /**
+     * -- GETTER --
+     *  Get first die value
+     */
+    @Getter
     private int die1;
+    /**
+     * -- GETTER --
+     *  Get second die value
+     */
+    @Getter
     private int die2;
 
-    // For testing
-    private boolean testMode;
-    private int[] testRolls;
-    private int testIndex;
 
     public Dice() {
         this.random = new Random();
         this.die1 = 0;
         this.die2 = 0;
-        this.testMode = false;
     }
 
     /**
      * Roll both dice
      */
     public void roll() {
-        if (testMode && testIndex < testRolls.length - 1) {
-            die1 = testRolls[testIndex++];
-            die2 = testRolls[testIndex++];
-        } else {
-            die1 = random.nextInt(6) + 1;
-            die2 = random.nextInt(6) + 1;
-        }
-    }
-
-    /**
-     * Get first die value
-     */
-    public int getDie1() {
-        return die1;
-    }
-
-    /**
-     * Get second die value
-     */
-    public int getDie2() {
-        return die2;
+        die1 = random.nextInt(6) + 1;
+        die2 = random.nextInt(6) + 1;
     }
 
     /**
@@ -86,36 +74,6 @@ public class Dice { // we want to calculate if the die is used or not
         return die1 + die2;
     }
 
-    // ========== TESTING METHODS ==========
-
-    /**
-     * Set predetermined rolls for testing
-     * Array should have even number of elements: [die1, die2, die1, die2, ...]
-     */
-    public void setTestRolls(int... rolls) {
-        if (rolls.length % 2 != 0) {
-            throw new IllegalArgumentException("Test rolls must have even number of elements");
-        }
-        this.testRolls = rolls.clone();
-        this.testIndex = 0;
-        this.testMode = true;
-    }
-
-    /**
-     * Disable test mode (return to random rolling)
-     */
-    public void disableTestMode() {
-        this.testMode = false;
-        this.testRolls = null;
-        this.testIndex = 0;
-    }
-
-    /**
-     * Check if in test mode
-     */
-    public boolean isTestMode() {
-        return testMode;
-    }
 
     @Override
     public String toString() {
