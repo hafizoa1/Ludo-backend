@@ -31,4 +31,15 @@ EXPOSE 8080
 # Run the application
 # Use exec form to handle signals properly
 # Bind to 0.0.0.0 instead of localhost for Fly.io
-ENTRYPOINT ["java", "-Dserver.address=0.0.0.0", "-jar", "app.jar"]
+# Set JVM memory limits for 512MB container:
+# -Xmx384m: Maximum heap size (75% of 512MB)
+# -Xms256m: Initial heap size
+# -XX:MaxMetaspaceSize=96m: Limit for class metadata
+# -XX:+UseContainerSupport: Detect container limits
+ENTRYPOINT ["java", \
+    "-Xmx384m", \
+    "-Xms256m", \
+    "-XX:MaxMetaspaceSize=96m", \
+    "-XX:+UseContainerSupport", \
+    "-Dserver.address=0.0.0.0", \
+    "-jar", "app.jar"]
