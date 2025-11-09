@@ -20,6 +20,7 @@ public enum ResponseType {
     INPUT_REQUIRED,
     GAME_MESSAGE,
     MOVE_OPTIONS,
+    CAPTURE_OPTIONS,
     NO_PENDING_CHOICE,
     INVALID_GAME,
     DICE_ROLLED,

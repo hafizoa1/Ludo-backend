@@ -171,6 +171,29 @@ public class MultiplayerInputProvider implements InputProvider {
         System.out.println("Move options sent to " + player.getPlayerName() + " (" + sessionId + ")");
     }
 
+    public void sendCaptureOptions(String captureMessage, int max) {
+        Player player = currentPlayer.get();
+        if (player == null) {
+            System.err.println("No current player set for capture options!");
+            return;
+        }
+
+        String sessionId = gameRoom.getSessionIdForPlayer(player);
+        if (sessionId == null) {
+            System.err.println("Could not find session for player: " + player.getPlayerName());
+            return;
+        }
+
+        // Add the choice prompt to the capture message
+        String fullMessage = captureMessage + "\nChoose which piece to capture (1-" + max + ")";
+
+        // Send capture options to current player's personal queue
+        broadcaster.sendToPlayer(sessionId,
+                GameResponse.success(CAPTURE_OPTIONS, fullMessage, null));
+
+        System.out.println("Capture options sent to " + player.getPlayerName() + " (" + sessionId + ")");
+    }
+
     public void handlePlayerInput(String sessionId, String input) {
         CompletableFuture<String> future = pendingInputs.remove(sessionId);
         if (future != null) {

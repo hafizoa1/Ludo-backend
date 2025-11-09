@@ -337,18 +337,26 @@ public class Game {
 
 
     private void choosePieceToCapture(Piece capturingPiece, List<Piece> capturablePieces) {
-        inputProvider.sendMessage(capturingPiece.getId() + " can capture multiple pieces:");
+        // Build the capture options message
+        StringBuilder captureOptions = new StringBuilder();
+        captureOptions.append(capturingPiece.getId()).append(" can capture multiple pieces:\n");
 
-        // Display options
         for (int i = 0; i < capturablePieces.size(); i++) {
             Piece piece = capturablePieces.get(i);
-            inputProvider.sendMessage((i + 1) + ". Capture " + piece.getId() + " (" + piece.getColor() + ")");
+            captureOptions.append((i + 1)).append(". Capture ")
+                         .append(piece.getId()).append(" (")
+                         .append(piece.getColor()).append(")\n");
+        }
+
+        // Send capture options using the proper message type
+        if (inputProvider instanceof MultiplayerInputProvider) {
+            MultiplayerInputProvider multiInput = (MultiplayerInputProvider) inputProvider;
+            multiInput.sendCaptureOptions(captureOptions.toString(), capturablePieces.size());
         }
 
         // Get player choice
         int choice = inputProvider.getChoice(1, capturablePieces.size(),
                 "Choose which piece to capture (1-" + capturablePieces.size() + "):");
-
 
         // Execute the capture (no choice to skip)
         Piece chosenPiece = capturablePieces.get(choice - 1);
