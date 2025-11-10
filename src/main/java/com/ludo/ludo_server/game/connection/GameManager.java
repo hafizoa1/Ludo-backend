@@ -85,8 +85,7 @@ public class GameManager {
         sessionMapper.createPlayerSession(playerId, sessionId, gameId, creator);
 
         return GameResponse.success(GAME_CREATED,
-                "Game " + gameId + " created. Waiting for players (1/" + DEFAULT_MAX_PLAYERS + ")",
-                Map.of("gameId", gameId));
+                "Game " + gameId + " created. Waiting for players (1/" + DEFAULT_MAX_PLAYERS + ")");
     }
 
     public GameResponse joinGame(String sessionId, String gameId, String playerId) {
