@@ -140,7 +140,10 @@ public class GameManager {
         int currentPlayers = gameRoom.getSessionIds().size();
         String message = "Joined game " + gameId + ". Waiting for players (" + currentPlayers + "/" + DEFAULT_MAX_PLAYERS + ")";
 
+        System.out.println("🎮 After join: " + currentPlayers + " players, isReady: " + gameRoom.isReady());
+
         if (gameRoom.isReady()) {
+            System.out.println("🚀 Starting game " + gameId);
             gameRoom.startGame();
             message = "All players joined! Game starting...";
         }
