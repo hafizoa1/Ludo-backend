@@ -31,15 +31,17 @@ public class GameStompController {
 
     @MessageMapping("/game.create")
     @SendToUser("/queue/response")
-    public GameResponse createGame(@RequestBody Map<String, String> request, Principal user) {
+    public GameResponse createGame(@RequestBody(required = false) Map<String, String> request, Principal user) {
         String sessionId = user.getName(); // STOMP provides session ID via Principal
-        String playerId = request.get("playerId");
+
+        // Handle missing playerId for backward compatibility (temporary)
+        String playerId = (request != null) ? request.get("playerId") : null;
+        if (playerId == null || playerId.isEmpty()) {
+            playerId = "temp-" + sessionId; // Use sessionId as fallback
+            System.out.println("⚠️ No playerId provided, using fallback: " + playerId);
+        }
 
         System.out.println("📨 [" + sessionId + "] Create game request (playerId: " + playerId + ")");
-
-        if (playerId == null || playerId.isEmpty()) {
-            return GameResponse.error(INVALID_GAME, "playerId is required");
-        }
 
         return gameManager.createGame(sessionId, playerId);
     }
@@ -51,11 +53,13 @@ public class GameStompController {
         String gameId = request.get("gameId");
         String playerId = request.get("playerId");
 
-        System.out.println("📨 [" + sessionId + "] Join game: " + gameId + " (playerId: " + playerId + ")");
-
+        // Handle missing playerId for backward compatibility (temporary)
         if (playerId == null || playerId.isEmpty()) {
-            return GameResponse.error(INVALID_GAME, "playerId is required");
+            playerId = "temp-" + sessionId; // Use sessionId as fallback
+            System.out.println("⚠️ No playerId provided, using fallback: " + playerId);
         }
+
+        System.out.println("📨 [" + sessionId + "] Join game: " + gameId + " (playerId: " + playerId + ")");
 
         GameResponse response = gameManager.joinGame(sessionId, gameId, playerId);
 
