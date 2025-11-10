@@ -31,11 +31,17 @@ public class GameStompController {
 
     @MessageMapping("/game.create")
     @SendToUser("/queue/response")
-    public GameResponse createGame(Principal user) {
+    public GameResponse createGame(@RequestBody Map<String, String> request, Principal user) {
         String sessionId = user.getName(); // STOMP provides session ID via Principal
-        System.out.println("📨 [" + sessionId + "] Create game request");
+        String playerId = request.get("playerId");
 
-        return gameManager.createGame(sessionId);
+        System.out.println("📨 [" + sessionId + "] Create game request (playerId: " + playerId + ")");
+
+        if (playerId == null || playerId.isEmpty()) {
+            return GameResponse.error(INVALID_GAME, "playerId is required");
+        }
+
+        return gameManager.createGame(sessionId, playerId);
     }
 
     @MessageMapping("/game.join")
@@ -43,16 +49,36 @@ public class GameStompController {
     public GameResponse joinGame(@RequestBody Map<String, String> request, Principal user) {
         String sessionId = user.getName();
         String gameId = request.get("gameId");
+        String playerId = request.get("playerId");
 
-        System.out.println("📨 [" + sessionId + "] Join game: " + gameId);
+        System.out.println("📨 [" + sessionId + "] Join game: " + gameId + " (playerId: " + playerId + ")");
 
-        GameResponse response = gameManager.joinGame(sessionId, gameId);
+        if (playerId == null || playerId.isEmpty()) {
+            return GameResponse.error(INVALID_GAME, "playerId is required");
+        }
+
+        GameResponse response = gameManager.joinGame(sessionId, gameId, playerId);
 
         // If successful join, notify all players in the game
         if (response.isSuccess()) {
             messagingTemplate.convertAndSend("/topic/game/" + gameId + "/players",
                     GameResponse.success(PLAYER_JOINED, "New player joined", response.getData()));
         }
+
+        return response;
+    }
+
+    @MessageMapping("/game.leave")
+    @SendToUser("/queue/response")
+    public GameResponse leaveGame(Principal user) {
+        String sessionId = user.getName();
+        System.out.println("📨 [" + sessionId + "] Leave game request");
+
+        // Mark player as intentionally left
+        gameManager.markPlayerLeft(sessionId);
+
+        // Call the existing leaveGame logic
+        GameResponse response = gameManager.leaveGame(sessionId);
 
         return response;
     }

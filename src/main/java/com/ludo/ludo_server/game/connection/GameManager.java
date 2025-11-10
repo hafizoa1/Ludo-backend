@@ -72,7 +72,7 @@ public class GameManager {
     // GAME ROOM MANAGEMENT
     // =============================================================================
 
-    public GameResponse createGame(String sessionId) {
+    public GameResponse createGame(String sessionId, String playerId) {
         String gameId = gameIdGenerator.generateGameId();
         GameRoom gameRoom = new GameRoom(gameId, DEFAULT_MAX_PLAYERS, broadcaster);
 
@@ -80,19 +80,51 @@ public class GameManager {
         gameRoom.addPlayer(sessionId, creator);
 
         gameRooms.put(gameId, gameRoom);
-        sessionMapper.addSessionToGame(sessionId, gameId);
+
+        // Register PlayerSession for reconnection support
+        sessionMapper.createPlayerSession(playerId, sessionId, gameId, creator);
 
         return GameResponse.success(GAME_CREATED,
-                "Game " + gameId + " created. Waiting for players (1/" + DEFAULT_MAX_PLAYERS + ")");
+                "Game " + gameId + " created. Waiting for players (1/" + DEFAULT_MAX_PLAYERS + ")",
+                Map.of("gameId", gameId));
     }
 
-    public GameResponse joinGame(String sessionId, String gameId) {
+    public GameResponse joinGame(String sessionId, String gameId, String playerId) {
         GameRoom gameRoom = gameRooms.get(gameId);
 
         if (gameRoom == null) {
             return GameResponse.error(GAME_NOT_FOUND, "Game " + gameId + " not found");
         }
 
+        // Check if this player is reconnecting
+        PlayerSession existingSession = sessionMapper.findPlayerSessionByPlayerId(playerId);
+
+        if (existingSession != null && gameId.equals(existingSession.getGameId())) {
+            // RECONNECTION: Same player rejoining same game
+            System.out.println("🔄 Player " + playerId + " reconnecting to game " + gameId);
+
+            // Update the session with new WebSocket sessionId
+            sessionMapper.updatePlayerSession(playerId, sessionId);
+
+            // Cancel any pending disconnect timeout
+            ScheduledFuture<?> disconnectTask = disconnectTasks.remove(playerId);
+            if (disconnectTask != null) {
+                disconnectTask.cancel(false);
+                System.out.println("✅ Cancelled disconnect timer for player: " + playerId);
+            }
+
+            // Update GameRoom mapping with new sessionId
+            gameRoom.reconnectPlayer(existingSession.getCurrentSessionId(), sessionId);
+
+            // Notify all players about reconnection
+            String reconnectMessage = existingSession.getDisplayName() + " reconnected!";
+            broadcaster.broadcastToGame(gameId,
+                GameResponse.success(GAME_MESSAGE, reconnectMessage, null));
+
+            return GameResponse.success(JOINED_GAME, "Reconnected to game " + gameId);
+        }
+
+        // NEW PLAYER joining
         if (!gameRoom.canJoin()) {
             return GameResponse.error(GAME_FULL, "Game " + gameId + " is full or already started");
         }
@@ -102,7 +134,9 @@ public class GameManager {
         Player player = new HumanPlayer("player" + playerNumber, "Player " + playerNumber, playerColors);
 
         gameRoom.addPlayer(sessionId, player);
-        sessionMapper.addSessionToGame(sessionId, gameId);
+
+        // Register PlayerSession for reconnection support
+        sessionMapper.createPlayerSession(playerId, sessionId, gameId, player);
 
         int currentPlayers = gameRoom.getSessionIds().size();
         String message = "Joined game " + gameId + ". Waiting for players (" + currentPlayers + "/" + DEFAULT_MAX_PLAYERS + ")";
@@ -237,6 +271,23 @@ public class GameManager {
     // =============================================================================
     // DISCONNECT & RECONNECTION HANDLING
     // =============================================================================
+
+    /**
+     * Mark player as intentionally leaving (not disconnected)
+     */
+    public void markPlayerLeft(String sessionId) {
+        sessionMapper.markPlayerLeft(sessionId);
+
+        // Cancel any pending disconnect timer
+        PlayerSession playerSession = sessionMapper.findPlayerSessionBySessionId(sessionId);
+        if (playerSession != null) {
+            ScheduledFuture<?> disconnectTask = disconnectTasks.remove(playerSession.getPlayerId());
+            if (disconnectTask != null) {
+                disconnectTask.cancel(false);
+                System.out.println("✅ Cancelled disconnect timer for leaving player: " + playerSession.getPlayerId());
+            }
+        }
+    }
 
     /**
      * Handle player disconnect - called by WebSocketEventListener

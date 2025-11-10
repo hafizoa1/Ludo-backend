@@ -73,33 +73,32 @@ public class SessionMapper {
     // ========== NEW METHODS FOR PLAYER SESSION MANAGEMENT ==========
 
     /**
-     * Create or update a player session
+     * Create a new player session
      */
-    public PlayerSession createOrUpdatePlayerSession(String playerId, String sessionId, String gameId, Player player) {
+    public PlayerSession createPlayerSession(String playerId, String sessionId, String gameId, Player player) {
+        PlayerSession newSession = new PlayerSession(playerId, sessionId, gameId, player);
+        playerSessions.put(playerId, newSession);
+        sessionToPlayer.put(sessionId, playerId);
+        addSessionToGame(sessionId, gameId);
+
+        System.out.println("✅ Created new session for player: " + playerId);
+        return newSession;
+    }
+
+    /**
+     * Update player session with new WebSocket sessionId (reconnection)
+     */
+    public PlayerSession updatePlayerSession(String playerId, String newSessionId) {
         PlayerSession existing = playerSessions.get(playerId);
-
         if (existing != null) {
-            // Player already exists - update session (reconnection)
-            existing.updateSession(sessionId);
-            sessionToPlayer.put(sessionId, playerId);
-
-            // Also update old session mappings
-            addSessionToGame(sessionId, gameId);
+            existing.updateSession(newSessionId);
+            sessionToPlayer.put(newSessionId, playerId);
+            addSessionToGame(newSessionId, existing.getGameId());
 
             System.out.println("✅ Updated session for player: " + playerId);
             return existing;
-        } else {
-            // New player - create session
-            PlayerSession newSession = new PlayerSession(playerId, sessionId, gameId, player);
-            playerSessions.put(playerId, newSession);
-            sessionToPlayer.put(sessionId, playerId);
-
-            // Also add to old session mappings
-            addSessionToGame(sessionId, gameId);
-
-            System.out.println("✅ Created new session for player: " + playerId);
-            return newSession;
         }
+        return null;
     }
 
     /**

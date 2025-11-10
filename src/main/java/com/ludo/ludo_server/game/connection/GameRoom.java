@@ -89,6 +89,24 @@ public class GameRoom {
         }
     }
 
+    public void reconnectPlayer(String oldSessionId, String newSessionId) {
+        // Get the player associated with old session
+        Player player = sessionToPlayer.remove(oldSessionId);
+
+        if (player != null) {
+            // Update sessionIds list
+            int index = sessionIds.indexOf(oldSessionId);
+            if (index != -1) {
+                sessionIds.set(index, newSessionId);
+            }
+
+            // Re-map to new session
+            sessionToPlayer.put(newSessionId, player);
+
+            System.out.println("🔄 GameRoom: Reconnected player from " + oldSessionId + " to " + newSessionId);
+        }
+    }
+
     // Enhanced startGame method
     public void startGame() {
         List<Player> players = new ArrayList<>(sessionToPlayer.values());
