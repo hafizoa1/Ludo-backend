@@ -28,6 +28,7 @@ package com.ludo.ludo_server.game.connection;
 
 import com.ludo.ludo_server.game.Game;
 import com.ludo.ludo_server.game.input.MultiplayerInputProvider;
+import com.ludo.ludo_server.game.input.PlayerTimeoutException;
 import com.ludo.ludo_server.game.state.GameState;
 import com.ludo.ludo_server.game.websocket.controller.GameResponse;
 import com.ludo.ludo_server.player.HumanPlayer;
@@ -211,11 +212,18 @@ public class GameManager {
                     GameResponse.success(DICE_ROLLED,
                             (die1 + die2), null));
 
+            String gameId = gameRoom.getGameId();
+
             CompletableFuture.runAsync(() -> {
                 try {
                     game.continueAfterDiceRoll();
+                } catch (PlayerTimeoutException e) {
+                    // Player timed out - end the game
+                    System.err.println("Player timeout detected: " + e.getPlayerName());
+                    handlePlayerTimeout(gameId, e);
                 } catch (Exception e) {
                     System.err.println("Error continuing game after dice roll: " + e.getMessage());
+                    e.printStackTrace();
                 }
             });
 
@@ -295,45 +303,62 @@ public class GameManager {
      * Handle player disconnect - called by WebSocketEventListener
      */
     public void handlePlayerDisconnect(String sessionId) {
+        System.out.println("🔍 [DISCONNECT DEBUG] handlePlayerDisconnect called with sessionId: " + sessionId);
+
         PlayerSession playerSession = sessionMapper.findPlayerSessionBySessionId(sessionId);
 
         if (playerSession == null) {
-            System.out.println("⚠️ handlePlayerDisconnect: No player session found for sessionId: " + sessionId);
+            System.out.println("⚠️ [DISCONNECT DEBUG] No player session found for sessionId: " + sessionId);
             return;
         }
 
         String gameId = playerSession.getGameId();
         String playerId = playerSession.getPlayerId();
+        String playerName = playerSession.getDisplayName();
 
-        System.out.println("🔌 Handling disconnect for player: " + playerId + " in game: " + gameId);
+        System.out.println("🔌 [DISCONNECT DEBUG] Handling disconnect for:");
+        System.out.println("   Player ID: " + playerId);
+        System.out.println("   Player Name: " + playerName);
+        System.out.println("   Game ID: " + gameId);
 
         // Get the game room
         GameRoom gameRoom = getGameRoom(gameId);
         if (gameRoom == null) {
-            System.out.println("⚠️ Game room not found: " + gameId);
+            System.out.println("⚠️ [DISCONNECT DEBUG] Game room not found: " + gameId);
             return;
         }
 
         // Notify opponent that player disconnected
-        String message = playerSession.getDisplayName() + " disconnected. Waiting 30 seconds for reconnection...";
+        String message = playerName + " disconnected. Waiting 30 seconds for reconnection...";
+        System.out.println("📢 [DISCONNECT DEBUG] Broadcasting disconnect message to game: " + message);
         broadcaster.broadcastToGame(gameId,
             GameResponse.success(GAME_MESSAGE, message, null));
 
         // Start 30-second timer
+        System.out.println("⏰ [DISCONNECT DEBUG] Scheduling 30-second disconnect timeout timer...");
+        System.out.println("   [DISCONNECT DEBUG] Current time: " + System.currentTimeMillis());
+        System.out.println("   [DISCONNECT DEBUG] Timeout will fire at: " + (System.currentTimeMillis() + 30000));
+
         ScheduledFuture<?> disconnectTask = scheduler.schedule(() -> {
+            System.out.println("⏰ [DISCONNECT DEBUG] 30-second timeout fired! Calling handleDisconnectTimeout()");
             handleDisconnectTimeout(playerId, gameId);
         }, 30, TimeUnit.SECONDS);
 
         // Store the task so we can cancel it if player reconnects
         disconnectTasks.put(playerId, disconnectTask);
 
-        System.out.println("⏰ Started 30-second disconnect timer for player: " + playerId);
+        System.out.println("✅ [DISCONNECT DEBUG] Disconnect timer scheduled and stored for player: " + playerId);
     }
 
     /**
      * Called after 30 seconds if player hasn't reconnected
      */
     private void handleDisconnectTimeout(String playerId, String gameId) {
+        System.out.println("=====================================");
+        System.out.println("⏰ [TIMEOUT DEBUG] handleDisconnectTimeout() CALLED");
+        System.out.println("   [TIMEOUT DEBUG] Player ID: " + playerId);
+        System.out.println("   [TIMEOUT DEBUG] Game ID: " + gameId);
+        System.out.println("   [TIMEOUT DEBUG] Current time: " + System.currentTimeMillis());
         System.out.println("⏰ Disconnect timeout reached for player: " + playerId);
 
         // Check if player is still disconnected
@@ -347,28 +372,163 @@ public class GameManager {
 
         System.out.println("❌ Player " + playerId + " did not reconnect - ending game");
 
-        // Player still disconnected - declare opponent winner
+        // Player still disconnected - end game and declare opponent winner
         GameRoom gameRoom = getGameRoom(gameId);
         if (gameRoom != null) {
-            // Notify players that game ended due to disconnect
-            String message = playerSession.getDisplayName() + " failed to reconnect. Game ended.";
-            broadcaster.broadcastToGame(gameId,
-                GameResponse.success(GAME_MESSAGE, message, null));
+            // Find the opponent (the player who is still connected)
+            String disconnectedSessionId = playerSession.getCurrentSessionId();
+            String winnerSessionId = null;
+            String winnerName = "Opponent";
 
-            // TODO: Determine winner (the other player who is still connected)
-            // TODO: Update game state to ended
+            for (String sid : gameRoom.getSessionIds()) {
+                if (!sid.equals(disconnectedSessionId)) {
+                    winnerSessionId = sid;
+                    Player winner = gameRoom.getPlayer(sid);
+                    if (winner != null) {
+                        winnerName = winner.getPlayerName();
+                    }
+                    break;
+                }
+            }
+
+            String disconnectedPlayerName = playerSession.getDisplayName();
+
+            // Send GAME_ENDED_TIMEOUT messages to both players
+            if (winnerSessionId != null) {
+                System.out.println("📤 [TIMEOUT DEBUG] Sending GAME_ENDED_TIMEOUT to winner: " + winnerSessionId);
+                System.out.println("   Winner name: " + winnerName);
+                System.out.println("   Disconnected player: " + disconnectedPlayerName);
+
+                // Get winner's colors
+                Player winnerPlayer = gameRoom.getPlayer(winnerSessionId);
+                String winnerColors = "";
+                if (winnerPlayer != null) {
+                    List<PlayerColor> colors = winnerPlayer.getColors();
+                    winnerColors = colors.get(0).toString().toLowerCase() + "," + colors.get(1).toString().toLowerCase();
+                }
+
+                // Get disconnected player's colors
+                Player disconnectedPlayer = gameRoom.getPlayer(disconnectedSessionId);
+                String disconnectedColors = "";
+                if (disconnectedPlayer != null) {
+                    List<PlayerColor> colors = disconnectedPlayer.getColors();
+                    disconnectedColors = colors.get(0).toString().toLowerCase() + "," + colors.get(1).toString().toLowerCase();
+                }
+
+                // Message to winner (format: "color1,color2|message")
+                broadcaster.sendToPlayer(winnerSessionId,
+                    GameResponse.success(GAME_ENDED_TIMEOUT,
+                        winnerColors + "|" + disconnectedPlayerName + " disconnected and did not reconnect. Game has ended - You win!"));
+
+                System.out.println("📤 [TIMEOUT DEBUG] Sending GAME_ENDED_TIMEOUT to disconnected player: " + disconnectedSessionId);
+
+                // Note: disconnected player won't receive this since they're disconnected
+                // but send it anyway in case they reconnect at the last second
+                broadcaster.sendToPlayer(disconnectedSessionId,
+                    GameResponse.error(GAME_ENDED_TIMEOUT,
+                        disconnectedColors + "|You disconnected and did not reconnect. Game has ended - " + winnerName + " wins."));
+            }
+
+            System.out.println("📤 [TIMEOUT DEBUG] Broadcasting GAME_ENDED_TIMEOUT to game room: " + gameId);
+
+            // Broadcast to game room
+            broadcaster.broadcastToGame(gameId,
+                GameResponse.success(GAME_ENDED_TIMEOUT,
+                    disconnectedPlayerName + " disconnected. Game has ended."));
 
             // Clean up the game room
             gameRooms.remove(gameId);
-        }
 
-        // Remove player session
-        sessionMapper.removePlayerSession(playerId);
+            // Clean up all player sessions in this game
+            for (String sid : gameRoom.getSessionIds()) {
+                PlayerSession session = sessionMapper.findPlayerSessionBySessionId(sid);
+                if (session != null) {
+                    sessionMapper.removePlayerSession(session.getPlayerId());
+                }
+            }
+        } else {
+            // Game room already removed
+            sessionMapper.removePlayerSession(playerId);
+        }
 
         // Clean up the disconnect task
         disconnectTasks.remove(playerId);
 
-        System.out.println("🗑️ Cleaned up game and player session for timeout");
+        System.out.println("🗑️ Cleaned up game and player session for disconnect timeout");
+    }
+
+    /**
+     * Handle player timeout - end game and declare opponent winner
+     */
+    private void handlePlayerTimeout(String gameId, PlayerTimeoutException timeoutException) {
+        System.err.println("⏰ Handling timeout for player " + timeoutException.getPlayerName() +
+                          " in game " + gameId);
+
+        GameRoom gameRoom = getGameRoom(gameId);
+        if (gameRoom == null) {
+            System.err.println("Game room not found: " + gameId);
+            return;
+        }
+
+        // Find the opponent (the player who DIDN'T timeout)
+        String timedOutSessionId = timeoutException.getSessionId();
+        String winnerSessionId = null;
+        String winnerName = "Opponent";
+
+        for (String sid : gameRoom.getSessionIds()) {
+            if (!sid.equals(timedOutSessionId)) {
+                winnerSessionId = sid;
+                Player winner = gameRoom.getPlayer(sid);
+                if (winner != null) {
+                    winnerName = winner.getPlayerName();
+                }
+                break;
+            }
+        }
+
+        String timedOutPlayerName = timeoutException.getPlayerName();
+
+        // Broadcast game ended to both players with different messages
+        if (winnerSessionId != null) {
+            // Message to winner
+            broadcaster.sendToPlayer(winnerSessionId,
+                GameResponse.success(GAME_ENDED_TIMEOUT,
+                    timedOutPlayerName + " is unresponsive. Game has ended - You win!"));
+
+            // Message to player who timed out (if still connected)
+            broadcaster.sendToPlayer(timedOutSessionId,
+                GameResponse.error(GAME_ENDED_TIMEOUT,
+                    "You were unresponsive. Game has ended - " + winnerName + " wins."));
+        }
+
+        // Broadcast to game room (general message)
+        broadcaster.broadcastToGame(gameId,
+            GameResponse.success(GAME_ENDED_TIMEOUT,
+                timedOutPlayerName + " is unresponsive. Game has ended."));
+
+        // Clean up the game
+        gameRooms.remove(gameId);
+
+        // Clean up player sessions
+        for (String sid : gameRoom.getSessionIds()) {
+            PlayerSession session = sessionMapper.findPlayerSessionBySessionId(sid);
+            if (session != null) {
+                sessionMapper.removePlayerSession(session.getPlayerId());
+            }
+        }
+
+        // Cancel any pending disconnect timers
+        for (String sid : gameRoom.getSessionIds()) {
+            PlayerSession session = sessionMapper.findPlayerSessionBySessionId(sid);
+            if (session != null) {
+                ScheduledFuture<?> task = disconnectTasks.remove(session.getPlayerId());
+                if (task != null) {
+                    task.cancel(false);
+                }
+            }
+        }
+
+        System.out.println("✅ Game " + gameId + " ended due to timeout. Winner: " + winnerName);
     }
 
     // =============================================================================

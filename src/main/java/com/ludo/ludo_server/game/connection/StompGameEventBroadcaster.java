@@ -25,8 +25,19 @@ public class StompGameEventBroadcaster { //dDELETE NORMAL GAME EVENT BROADCASTER
 
     // Send to specific player
     public void sendToPlayer(String sessionId, GameResponse response) {
+        String destination = "/user/" + sessionId + "/queue/response";
+        System.out.println("=====================================");
+        System.out.println("📤 [BROADCAST DEBUG] SENDING MESSAGE TO PLAYER");
+        System.out.println("   [BROADCAST DEBUG] Destination: " + destination);
+        System.out.println("   [BROADCAST DEBUG] SessionId: " + sessionId);
+        System.out.println("   [BROADCAST DEBUG] Response Type: " + response.getType());
+        System.out.println("   [BROADCAST DEBUG] Success: " + response.isSuccess());
+        System.out.println("   [BROADCAST DEBUG] Message: " + response.getMessage());
+        System.out.println("   [BROADCAST DEBUG] Error: " + response.getError());
+        System.out.println("   [BROADCAST DEBUG] Full Response: " + response);
+        System.out.println("=====================================");
+
         messagingTemplate.convertAndSendToUser(sessionId, "/queue/response", response);
-        System.out.println("📤 Send to player " + sessionId + ": " + response.getType());
     }
 
 }

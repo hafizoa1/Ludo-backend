@@ -29,5 +29,6 @@ public enum ResponseType {
     YOUR_TURN,
     MOVE_EXECUTED,
     ROLL_ERROR,
-    PLAYER_JOINED
+    PLAYER_JOINED,
+    GAME_ENDED_TIMEOUT
 }

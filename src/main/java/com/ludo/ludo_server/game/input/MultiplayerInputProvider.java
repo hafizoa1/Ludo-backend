@@ -9,6 +9,9 @@ import com.ludo.ludo_server.player.Player;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static com.ludo.ludo_server.game.websocket.controller.ResponseType.*;
 
@@ -17,6 +20,8 @@ import static com.ludo.ludo_server.game.websocket.controller.ResponseType.*;
  * This bridges the Game class with the WebSocket system
  */
 public class MultiplayerInputProvider implements InputProvider {
+
+    private static final int CHOICE_TIMEOUT_SECONDS = 30;
 
     private String gameId;
     private StompGameEventBroadcaster broadcaster;
@@ -59,25 +64,40 @@ public class MultiplayerInputProvider implements InputProvider {
                 CompletableFuture<Integer> future = new CompletableFuture<>();
                 pendingChoices.put(sessionId, future);
 
-                // DON'T send another message - the move options were already sent
-                // Just wait for the response
-                System.out.println("Waiting for choice from " + player.getPlayerName() + " (move options already sent)");
+                System.out.println("Waiting for choice from " + player.getPlayerName() +
+                                 " (timeout: " + CHOICE_TIMEOUT_SECONDS + "s)");
 
-                Integer choice = future.get();
+                // Add timeout to prevent indefinite blocking
+                Integer choice = future.get(CHOICE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
                 if (choice >= min && choice <= max) {
                     System.out.println("Valid choice " + choice + " from " + player.getPlayerName());
                     return choice;
                 } else {
-                    System.out.println("Invalid choice " + choice + " from " + player.getPlayerName() + ". Expected: " + min + "-" + max);
+                    System.out.println("Invalid choice " + choice + " from " + player.getPlayerName() +
+                                     ". Expected: " + min + "-" + max);
                     broadcaster.sendToPlayer(sessionId,
                             GameResponse.error(INVALID_CHOICE,
-                                    "Invalid choice " + choice + "! Please enter a number between " + min + " and " + max));
+                                    "Invalid choice " + choice + "! Please enter a number between " +
+                                    min + " and " + max));
                 }
 
-            } catch (Exception e) {
+            } catch (TimeoutException e) {
+                // Player didn't respond within timeout - throw exception to end game
+                pendingChoices.remove(sessionId);
+                System.err.println("⏰ TIMEOUT: Player " + player.getPlayerName() +
+                                 " did not respond within " + CHOICE_TIMEOUT_SECONDS + " seconds");
+
+                throw new PlayerTimeoutException(sessionId, player.getPlayerId(), player.getPlayerName());
+
+            } catch (InterruptedException e) {
+                System.err.println("Thread interrupted while waiting for choice");
+                Thread.currentThread().interrupt();
+                throw new PlayerTimeoutException(sessionId, player.getPlayerId(), player.getPlayerName());
+            } catch (ExecutionException e) {
                 System.err.println("Error getting choice from player: " + e.getMessage());
-                return min; // Fallback
+                e.printStackTrace();
+                throw new PlayerTimeoutException(sessionId, player.getPlayerId(), player.getPlayerName());
             }
         }
     }
@@ -108,14 +128,29 @@ public class MultiplayerInputProvider implements InputProvider {
             GameResponse inputRequest = GameResponse.success(INPUT_REQUIRED, prompt, currentGameState);
             broadcaster.sendToSession(sessionId, inputRequest);
 
-            System.out.println("Sent input request to " + player.getPlayerName() + " (" + sessionId + "): " + prompt);
+            System.out.println("Sent input request to " + player.getPlayerName() +
+                             " (timeout: " + CHOICE_TIMEOUT_SECONDS + "s)");
 
-            // Wait for any response
-            String input = future.get();
+            // Wait for any response with timeout
+            String input = future.get(CHOICE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             System.out.println("Received input '" + input + "' from " + player.getPlayerName());
 
-        } catch (Exception e) {
+        } catch (TimeoutException e) {
+            // Player didn't respond within timeout
+            pendingInputs.remove(sessionId);
+            System.err.println("⏰ TIMEOUT: Player " + player.getPlayerName() +
+                             " did not respond to input request within " + CHOICE_TIMEOUT_SECONDS + " seconds");
+
+            throw new PlayerTimeoutException(sessionId, player.getPlayerId(), player.getPlayerName());
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.err.println("Thread interrupted while waiting for input");
+            throw new PlayerTimeoutException(sessionId, player.getPlayerId(), player.getPlayerName());
+        } catch (ExecutionException e) {
             System.err.println("Error waiting for input: " + e.getMessage());
+            e.printStackTrace();
+            throw new PlayerTimeoutException(sessionId, player.getPlayerId(), player.getPlayerName());
         }
     }
 
