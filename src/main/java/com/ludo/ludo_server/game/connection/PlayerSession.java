@@ -2,6 +2,8 @@ package com.ludo.ludo_server.game.connection;
 
 import com.ludo.ludo_server.player.Player;
 import lombok.Data;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 
@@ -25,6 +27,8 @@ import java.time.Instant;
  */
 @Data
 public class PlayerSession {
+
+    private static final Logger logger = LoggerFactory.getLogger(PlayerSession.class);
 
     private String playerId;           // Persistent device ID (e.g., "device-abc-123")
     private String currentSessionId;   // Current WebSocket session (changes on reconnect)
@@ -51,7 +55,7 @@ public class PlayerSession {
         this.currentSessionId = newSessionId;
         this.status = PlayerStatus.CONNECTED;
         this.lastSeen = Instant.now();
-        System.out.println("🔄 Player " + playerId + " reconnected with new session: " + newSessionId);
+        logger.info("Player {} reconnected with new session: {}", playerId, newSessionId);
     }
 
     /**
@@ -60,7 +64,7 @@ public class PlayerSession {
     public void markDisconnected() {
         this.status = PlayerStatus.DISCONNECTED;
         this.lastSeen = Instant.now();
-        System.out.println("🔌 Player " + playerId + " disconnected from session: " + currentSessionId);
+        logger.info("Player {} disconnected from session: {}", playerId, currentSessionId);
     }
 
     /**
@@ -69,7 +73,7 @@ public class PlayerSession {
     public void markLeft() {
         this.status = PlayerStatus.LEFT;
         this.lastSeen = Instant.now();
-        System.out.println("👋 Player " + playerId + " left game: " + gameId);
+        logger.info("Player {} left game: {}", playerId, gameId);
     }
 
     /**

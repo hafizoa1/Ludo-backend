@@ -5,6 +5,8 @@ package com.ludo.ludo_server.piece;
 import com.ludo.ludo_server.board.Position;
 import com.ludo.ludo_server.player.Player;
 import com.ludo.ludo_server.player.PlayerColor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -15,6 +17,8 @@ import java.util.Objects;
  * It interacts with the static MovementPath class to get its board coordinates.
  */
 public class Piece {
+
+    private static final Logger logger = LoggerFactory.getLogger(Piece.class);
 
     private final String id;           // "R1", "G2", etc.
     private final PlayerColor color;   // RED, GREEN, BLUE, YELLOW enum
@@ -60,18 +64,17 @@ public class Piece {
             if (diceValue == 6) {
                 this.pathPosition = 0; // Move to the entry point (path position 0)
                 updateBoardPosition(); // Update physical coordinates
-                System.out.println(this.id + " moved to path position " + pathPosition +
-                        " at board coordinates " + currentBoardPosition);
+                logger.debug("{} moved to path position {} at board coordinates {}", this.id, pathPosition, currentBoardPosition);
                 return currentBoardPosition;
             } else {
-                System.out.println(this.id + " needs a 6 to exit home (rolled " + diceValue + "). Stays at home.");
+                logger.debug("{} needs a 6 to exit home (rolled {}). Stays at home.", this.id, diceValue);
                 return currentBoardPosition; // Piece stays at home
             }
         }
 
         // 2. Cannot move if already finished.
         if (isFinished()) {
-            System.out.println(this.id + " is already finished and cannot move.");
+            logger.debug("{} is already finished and cannot move.", this.id);
             return currentBoardPosition;
         }
 
@@ -80,7 +83,7 @@ public class Piece {
 
         // 4. Cannot overshoot the finish line.
         if (potentialNewPathPosition > FINISHED_POSITION) {
-            System.out.println(this.id + " cannot move " + diceValue + " steps (overshot finish line). Stays at " + this.pathPosition);
+            logger.debug("{} cannot move {} steps (overshot finish line). Stays at {}", this.id, diceValue, this.pathPosition);
             return currentBoardPosition; // Piece stays at current position
         }
 
@@ -88,7 +91,7 @@ public class Piece {
         if (potentialNewPathPosition == FINISHED_POSITION) {
             this.pathPosition = FINISHED_POSITION; // Set to 57
             updateBoardPosition(); // This should handle FINISHED_POSITION and place at [7,7]
-            System.out.println(this.id + " can finish game!");
+            logger.debug("{} can finish game!", this.id);
             return currentBoardPosition;
         }
 
@@ -96,8 +99,7 @@ public class Piece {
         this.pathPosition = potentialNewPathPosition;
         updateBoardPosition();
 
-        System.out.println(this.id + " moved to path position " + pathPosition +
-                " at board coordinates " + currentBoardPosition);
+        logger.debug("{} moved to path position {} at board coordinates {}", this.id, pathPosition, currentBoardPosition);
 
         return currentBoardPosition;
     }
@@ -121,8 +123,8 @@ public class Piece {
             if (newBoardPos != null) {
                 this.currentBoardPosition = newBoardPos;
             } else {
-                System.err.println("Error: Could not determine board position for " + this.id +
-                        " at pathPosition " + this.pathPosition + " (returned null from MovementPath).");
+                logger.warn("Could not determine board position for {} at pathPosition {} (returned null from MovementPath).",
+                        this.id, this.pathPosition);
             }
         }
         // If pathPosition is -1 (home), currentBoardPosition should already be set
@@ -300,7 +302,7 @@ public class Piece {
     public void sendHome(Position homeBoardPosition) {
         this.pathPosition = -1; // Indicate it's at home
         this.currentBoardPosition = homeBoardPosition; // Set its specific board display coordinate
-        System.out.println(this.id + " was sent home to " + currentBoardPosition + "!");
+        logger.debug("{} was sent home to {}!", this.id, currentBoardPosition);
     }
 
 

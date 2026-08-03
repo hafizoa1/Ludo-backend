@@ -1,6 +1,8 @@
 package com.ludo.ludo_server.game.connection;
 
 import com.ludo.ludo_server.game.websocket.controller.GameResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Component;
@@ -8,15 +10,15 @@ import org.springframework.stereotype.Component;
 @Component
 public class StompGameEventBroadcaster { //dDELETE NORMAL GAME EVENT BROADCASTER
 
+    private static final Logger logger = LoggerFactory.getLogger(StompGameEventBroadcaster.class);
+
     @Autowired
     private SimpMessagingTemplate messagingTemplate;
 
     // Broadcast to all players in a game
     public void broadcastToGame(String gameId, GameResponse response) {
         messagingTemplate.convertAndSend("/topic/game/" + gameId + "/events", response);
-        System.out.println("📤 Broadcast to game " + gameId + ": " + response.getType());
-        System.out.println(response);
-        System.out.println("\n\n\n");
+        logger.debug("Broadcast to game {}: {} - {}", gameId, response.getType(), response);
     }
 
     public void sendToSession(String sessionId, GameResponse response) {
@@ -26,16 +28,10 @@ public class StompGameEventBroadcaster { //dDELETE NORMAL GAME EVENT BROADCASTER
     // Send to specific player
     public void sendToPlayer(String sessionId, GameResponse response) {
         String destination = "/user/" + sessionId + "/queue/response";
-        System.out.println("=====================================");
-        System.out.println("📤 [BROADCAST DEBUG] SENDING MESSAGE TO PLAYER");
-        System.out.println("   [BROADCAST DEBUG] Destination: " + destination);
-        System.out.println("   [BROADCAST DEBUG] SessionId: " + sessionId);
-        System.out.println("   [BROADCAST DEBUG] Response Type: " + response.getType());
-        System.out.println("   [BROADCAST DEBUG] Success: " + response.isSuccess());
-        System.out.println("   [BROADCAST DEBUG] Message: " + response.getMessage());
-        System.out.println("   [BROADCAST DEBUG] Error: " + response.getError());
-        System.out.println("   [BROADCAST DEBUG] Full Response: " + response);
-        System.out.println("=====================================");
+        logger.debug("[BROADCAST DEBUG] Sending message to player. Destination: {}, SessionId: {}, Response Type: {}, " +
+                        "Success: {}, Message: {}, Error: {}, Full Response: {}",
+                destination, sessionId, response.getType(), response.isSuccess(), response.getMessage(),
+                response.getError(), response);
 
         messagingTemplate.convertAndSendToUser(sessionId, "/queue/response", response);
     }

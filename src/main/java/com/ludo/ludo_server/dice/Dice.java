@@ -40,6 +40,14 @@ public class Dice { // we want to calculate if the die is used or not
     }
 
     /**
+     * Force specific values instead of rolling - for deterministic tests only.
+     */
+    public void setValues(int die1, int die2) {
+        this.die1 = die1;
+        this.die2 = die2;
+    }
+
+    /**
      * Get both dice values as array [die1, die2]
      */
     public int[] getBothDice() {

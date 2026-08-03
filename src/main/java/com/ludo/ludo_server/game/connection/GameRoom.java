@@ -28,8 +28,11 @@ import com.ludo.ludo_server.game.input.MultiplayerInputProvider;
 import com.ludo.ludo_server.game.state.GameState;
 import com.ludo.ludo_server.game.websocket.controller.GameResponse;
 import com.ludo.ludo_server.player.Player;
+import com.ludo.ludo_server.player.PlayerColor;
 import lombok.Data;
 import lombok.Getter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,10 +40,14 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static com.ludo.ludo_server.game.websocket.controller.ResponseType.GAME_ENDED;
+import static com.ludo.ludo_server.game.websocket.controller.ResponseType.GAME_ENDED_TIMEOUT;
 import static com.ludo.ludo_server.game.websocket.controller.ResponseType.GAME_STARTED;
 
 @Data
 public class GameRoom {
+
+    private static final Logger logger = LoggerFactory.getLogger(GameRoom.class);
 
     private final String gameId;
     private final List<String> sessionIds;
@@ -103,7 +110,7 @@ public class GameRoom {
             // Re-map to new session
             sessionToPlayer.put(newSessionId, player);
 
-            System.out.println("🔄 GameRoom: Reconnected player from " + oldSessionId + " to " + newSessionId);
+            logger.info("GameRoom: Reconnected player from {} to {}", oldSessionId, newSessionId);
         }
     }
 
@@ -126,12 +133,88 @@ public class GameRoom {
                         GameResponse.success(GAME_STARTED, "Game started", initialState));
                 game.startGame();
             } catch (Exception e) {
-                System.err.println("Game error: " + e.getMessage());
+                logger.error("Game error: {}", e.getMessage(), e);
                 status = GameRoomStatus.FINISHED;
             }
         });
 
-        System.out.println("Game started for room: " + gameId);
+        logger.info("Game started for room: {}", gameId);
+    }
+
+    /**
+     * End this room because a player legitimately won.
+     */
+    public void endByWin(String winnerName) {
+        status = GameRoomStatus.FINISHED;
+        broadcaster.broadcastToGame(gameId,
+                GameResponse.success(GAME_ENDED, winnerName + " has won the game!"));
+    }
+
+    /**
+     * End this room because a player didn't respond to a choice in time -
+     * the other player wins by forfeit.
+     */
+    public void endByTimeout(String timedOutSessionId, String timedOutPlayerName) {
+        announceForfeit(timedOutSessionId, timedOutPlayerName, false);
+    }
+
+    /**
+     * End this room because a player disconnected and never reconnected -
+     * the other player wins by forfeit.
+     */
+    public void endByDisconnect(String disconnectedSessionId, String disconnectedPlayerName) {
+        announceForfeit(disconnectedSessionId, disconnectedPlayerName, true);
+    }
+
+    private void announceForfeit(String forfeitingSessionId, String forfeitingPlayerName, boolean wasDisconnect) {
+        status = GameRoomStatus.FINISHED;
+
+        String winnerSessionId = null;
+        String winnerName = "Opponent";
+        for (String sid : sessionIds) {
+            if (!sid.equals(forfeitingSessionId)) {
+                winnerSessionId = sid;
+                Player winner = getPlayer(sid);
+                if (winner != null) {
+                    winnerName = winner.getPlayerName();
+                }
+                break;
+            }
+        }
+
+        if (winnerSessionId != null) {
+            if (wasDisconnect) {
+                // Disconnect messages embed colors (format: "color1,color2|message")
+                // so the frontend can show which pieces belonged to whom.
+                String winnerColors = colorsOf(getPlayer(winnerSessionId));
+                String forfeitingColors = colorsOf(getPlayer(forfeitingSessionId));
+                broadcaster.sendToPlayer(winnerSessionId,
+                        GameResponse.success(GAME_ENDED_TIMEOUT,
+                                winnerColors + "|" + forfeitingPlayerName + " disconnected and did not reconnect. Game has ended - You win!"));
+                broadcaster.sendToPlayer(forfeitingSessionId,
+                        GameResponse.error(GAME_ENDED_TIMEOUT,
+                                forfeitingColors + "|You disconnected and did not reconnect. Game has ended - " + winnerName + " wins."));
+            } else {
+                broadcaster.sendToPlayer(winnerSessionId,
+                        GameResponse.success(GAME_ENDED_TIMEOUT,
+                                forfeitingPlayerName + " is unresponsive. Game has ended - You win!"));
+                broadcaster.sendToPlayer(forfeitingSessionId,
+                        GameResponse.error(GAME_ENDED_TIMEOUT,
+                                "You were unresponsive. Game has ended - " + winnerName + " wins."));
+            }
+        }
+
+        String reasonPhrase = wasDisconnect ? "disconnected." : "is unresponsive.";
+        broadcaster.broadcastToGame(gameId,
+                GameResponse.success(GAME_ENDED_TIMEOUT, forfeitingPlayerName + " " + reasonPhrase + " Game has ended."));
+    }
+
+    private String colorsOf(Player player) {
+        if (player == null) {
+            return "";
+        }
+        List<PlayerColor> colors = player.getColors();
+        return colors.get(0).toString().toLowerCase() + "," + colors.get(1).toString().toLowerCase();
     }
 
     public Player getPlayer(String sessionId) {

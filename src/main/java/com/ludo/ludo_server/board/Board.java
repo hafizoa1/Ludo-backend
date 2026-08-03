@@ -4,6 +4,8 @@ package com.ludo.ludo_server.board;
 import com.ludo.ludo_server.piece.Piece;
 import com.ludo.ludo_server.player.Player;
 import com.ludo.ludo_server.player.PlayerColor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -16,6 +18,8 @@ import java.util.Map;
  * Game class handles all movement logic and rules
  */
 public class Board {
+
+    private static final Logger logger = LoggerFactory.getLogger(Board.class);
 
     public static final int BOARD_SIZE = 15;
 
@@ -208,7 +212,7 @@ public class Board {
             piecePositions.computeIfAbsent(position, k -> new ArrayList<>()).add(piece);
             piece.setBoardPosition(position); // Update the piece's own record of its position
         } else {
-            System.err.println("Error: Attempted to place piece " + piece.getId() + " at invalid board position: " + row + "," + col);
+            logger.warn("Attempted to place piece {} at invalid board position: {},{}", piece.getId(), row, col);
         }
     }
 

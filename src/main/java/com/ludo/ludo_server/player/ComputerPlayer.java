@@ -2,7 +2,6 @@ package com.ludo.ludo_server.player;
 
 
 
-import com.ludo.ludo_server.config.GameConfig;
 import com.ludo.ludo_server.piece.Piece;
 
 import java.util.List;
@@ -15,7 +14,7 @@ public class ComputerPlayer extends Player {
 
     private final Random random;
 
-    public ComputerPlayer(String playerId, String playerName, List<PlayerColor> colors, GameConfig.ComputerDifficulty difficulty) {
+    public ComputerPlayer(String playerId, String playerName, List<PlayerColor> colors, ComputerDifficulty difficulty) {
         super(playerId, playerName, colors);
         this.random = new Random();
     }

@@ -1,9 +1,12 @@
 package com.ludo.ludo_server.config;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
+import org.springframework.messaging.MessageDeliveryException;
 import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.messaging.simp.stomp.StompCommand;
@@ -18,6 +21,8 @@ import java.util.Collections;
 @Configuration
 @EnableWebSocketMessageBroker
 public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+
+    private static final Logger logger = LoggerFactory.getLogger(WebSocketConfig.class);
 
     @Value("${allowed.origins}")
     private String allowedOrigins;
@@ -40,9 +45,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         String[] origins = allowedOrigins.split(",");
 
         // Log the CORS origins being used
-        System.out.println("=====================================");
-        System.out.println("🔒 CORS ALLOWED ORIGINS: " + allowedOrigins);
-        System.out.println("=====================================");
+        logger.info("CORS ALLOWED ORIGINS: {}", allowedOrigins);
 
         // Main endpoint with SockJS fallback
         registry.addEndpoint("/game")
@@ -67,11 +70,12 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 StompHeaderAccessor accessor = MessageHeaderAccessor.getAccessor(message, StompHeaderAccessor.class);
                 if (StompCommand.CONNECT.equals(accessor.getCommand())) {
                     String userLogin = accessor.getFirstNativeHeader("login");
-                    if (userLogin != null) {
-                        // Create a Principal object from the user login
-                        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(userLogin, null, Collections.emptyList());
-                        accessor.setUser(auth);
+                    if (userLogin == null || userLogin.isBlank()) {
+                        throw new MessageDeliveryException("Missing required 'login' header on CONNECT");
                     }
+                    // Create a Principal object from the user login
+                    UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(userLogin, null, Collections.emptyList());
+                    accessor.setUser(auth);
                 }
                 return message;
             }

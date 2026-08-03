@@ -14,6 +14,3 @@ public class LudoServerApplication {
 
 }
 
-//spring web, webscket and lombok
-//Topic, websocket and disconnect listener
-//TODO: clients are not receiving messages - after choices are made communication is not being made back to clients

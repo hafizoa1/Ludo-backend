@@ -1,6 +1,8 @@
 package com.ludo.ludo_server.game.connection;
 
 import com.ludo.ludo_server.player.Player;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -17,6 +19,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 @Component
 public class SessionMapper {
+
+    private static final Logger logger = LoggerFactory.getLogger(SessionMapper.class);
 
     // ========== ORIGINAL MAPPINGS ==========
     private final Map<String, String> sessionToGame = new ConcurrentHashMap<>();
@@ -53,7 +57,7 @@ public class SessionMapper {
         String playerId = sessionToPlayer.remove(sessionId);
         if (playerId != null) {
             playerSessions.remove(playerId);
-            System.out.println("🗑️ Removed player session: " + playerId);
+            logger.info("Removed player session: {}", playerId);
         }
     }
 
@@ -81,7 +85,7 @@ public class SessionMapper {
         sessionToPlayer.put(sessionId, playerId);
         addSessionToGame(sessionId, gameId);
 
-        System.out.println("✅ Created new session for player: " + playerId);
+        logger.info("Created new session for player: {}", playerId);
         return newSession;
     }
 
@@ -95,7 +99,7 @@ public class SessionMapper {
             sessionToPlayer.put(newSessionId, playerId);
             addSessionToGame(newSessionId, existing.getGameId());
 
-            System.out.println("✅ Updated session for player: " + playerId);
+            logger.info("Updated session for player: {}", playerId);
             return existing;
         }
         return null;
@@ -123,7 +127,7 @@ public class SessionMapper {
         PlayerSession session = findPlayerSessionBySessionId(sessionId);
         if (session != null) {
             session.markDisconnected();
-            System.out.println("🔌 Marked player as disconnected: " + session.getPlayerId());
+            logger.info("Marked player as disconnected: {}", session.getPlayerId());
         }
     }
 
@@ -134,7 +138,7 @@ public class SessionMapper {
         PlayerSession session = findPlayerSessionBySessionId(sessionId);
         if (session != null) {
             session.markLeft();
-            System.out.println("👋 Marked player as left: " + session.getPlayerId());
+            logger.info("Marked player as left: {}", session.getPlayerId());
         }
     }
 
@@ -146,7 +150,7 @@ public class SessionMapper {
         if (session != null) {
             sessionToPlayer.remove(session.getCurrentSessionId());
             removeSession(session.getCurrentSessionId()); // Also remove from old mappings
-            System.out.println("🗑️ Removed player session: " + playerId);
+            logger.info("Removed player session: {}", playerId);
         }
     }
 

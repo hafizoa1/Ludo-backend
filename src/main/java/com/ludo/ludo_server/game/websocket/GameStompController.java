@@ -2,6 +2,8 @@ package com.ludo.ludo_server.game.websocket;
 
 
 import com.ludo.ludo_server.game.websocket.controller.GameResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.ludo.ludo_server.game.connection.GameManager;
 import org.springframework.messaging.handler.annotation.MessageMapping;
@@ -17,6 +19,8 @@ import static com.ludo.ludo_server.game.websocket.controller.ResponseType.*;
 
 @Controller
 public class GameStompController {
+
+    private static final Logger logger = LoggerFactory.getLogger(GameStompController.class);
 
     @Autowired
     private GameManager gameManager;
@@ -38,10 +42,10 @@ public class GameStompController {
         String playerId = (request != null) ? request.get("playerId") : null;
         if (playerId == null || playerId.isEmpty()) {
             playerId = "temp-" + sessionId; // Use sessionId as fallback
-            System.out.println("⚠️ No playerId provided, using fallback: " + playerId);
+            logger.warn("No playerId provided, using fallback: {}", playerId);
         }
 
-        System.out.println("📨 [" + sessionId + "] Create game request (playerId: " + playerId + ")");
+        logger.debug("[{}] Create game request (playerId: {})", sessionId, playerId);
 
         return gameManager.createGame(sessionId, playerId);
     }
@@ -56,10 +60,10 @@ public class GameStompController {
         // Handle missing playerId for backward compatibility (temporary)
         if (playerId == null || playerId.isEmpty()) {
             playerId = "temp-" + sessionId; // Use sessionId as fallback
-            System.out.println("⚠️ No playerId provided, using fallback: " + playerId);
+            logger.warn("No playerId provided, using fallback: {}", playerId);
         }
 
-        System.out.println("📨 [" + sessionId + "] Join game: " + gameId + " (playerId: " + playerId + ")");
+        logger.debug("[{}] Join game: {} (playerId: {})", sessionId, gameId, playerId);
 
         GameResponse response = gameManager.joinGame(sessionId, gameId, playerId);
 
@@ -76,7 +80,7 @@ public class GameStompController {
     @SendToUser("/queue/response")
     public GameResponse leaveGame(Principal user) {
         String sessionId = user.getName();
-        System.out.println("📨 [" + sessionId + "] Leave game request");
+        logger.debug("[{}] Leave game request", sessionId);
 
         // Mark player as intentionally left
         gameManager.markPlayerLeft(sessionId);
@@ -94,7 +98,7 @@ public class GameStompController {
     @MessageMapping("/game.roll")
     public void rollDice(Principal user) {
         String sessionId = user.getName();
-        System.out.println("📨 [" + sessionId + "] Roll dice request");
+        logger.debug("[{}] Roll dice request", sessionId);
 
         try {
             // Handle the dice roll
@@ -118,22 +122,13 @@ public class GameStompController {
         String sessionId = user.getName();
         int choice = (Integer) request.get("choice");
 
-        System.out.println("📨 [" + sessionId + "] Player choice: " + choice);
+        logger.debug("[{}] Player choice: {}", sessionId, choice);
 
         // Use your existing logic!
         GameResponse response = gameManager.handlePlayerChoice(sessionId, choice);
 
         // Send response to requesting player
         messagingTemplate.convertAndSendToUser(sessionId, "/queue/response", response);
-
-        // If move was made, broadcast updated game state
-        if (response.isSuccess() && response.getData() != null) {
-            String gameId = getGameIdForSession(sessionId);
-            if (gameId != null) {
-                messagingTemplate.convertAndSend("/topic/game/" + gameId + "/moves",
-                        GameResponse.success(MOVE_EXECUTED, response.getMessage(), response.getData()));
-            }
-        }
     }
 
     // =============================================================================
@@ -145,16 +140,6 @@ public class GameStompController {
     public GameResponse getGameState(Principal user) {
         String sessionId = user.getName();
         return gameManager.getGameState(sessionId);
-    }
-
-    // =============================================================================
-    // HELPER METHODS
-    // =============================================================================
-
-    private String getGameIdForSession(String sessionId) {
-        // Use your existing GameManager to get game ID
-        var gameRoom = gameManager.getGameRoomBySession(sessionId);
-        return gameRoom != null ? gameRoom.getGameId() : null;
     }
 }
 

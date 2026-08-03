@@ -3,6 +3,8 @@ package com.ludo.ludo_server.game.websocket;
 import com.ludo.ludo_server.game.connection.GameManager;
 import com.ludo.ludo_server.game.connection.PlayerSession;
 import com.ludo.ludo_server.game.connection.SessionMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.event.EventListener;
 import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
@@ -29,6 +31,8 @@ import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 @Component
 public class WebSocketEventListener {
 
+    private static final Logger logger = LoggerFactory.getLogger(WebSocketEventListener.class);
+
     @Autowired
     private SessionMapper sessionMapper;
 
@@ -45,7 +49,7 @@ public class WebSocketEventListener {
         StompHeaderAccessor headerAccessor = StompHeaderAccessor.wrap(event.getMessage());
         String sessionId = headerAccessor.getSessionId();
 
-        System.out.println("🔌 WebSocket CONNECTED: " + sessionId);
+        logger.debug("WebSocket CONNECTED: {}", sessionId);
 
         // Note: We don't do much here yet - the actual player joining happens
         // when they send /game.create or /game.join messages
@@ -72,11 +76,8 @@ public class WebSocketEventListener {
         // The Principal name is what we store in GameStompController (user.getName())
         String stompSessionId = (headerAccessor.getUser() != null) ? headerAccessor.getUser().getName() : headerAccessor.getSessionId();
 
-        System.out.println("=====================================");
-        System.out.println("🔌 [DISCONNECT DEBUG] WebSocket DISCONNECTED");
-        System.out.println("   [DISCONNECT DEBUG] WebSocket sessionId: " + headerAccessor.getSessionId());
-        System.out.println("   [DISCONNECT DEBUG] STOMP Principal: " + stompSessionId);
-        System.out.println("   [DISCONNECT DEBUG] Timestamp: " + System.currentTimeMillis());
+        logger.debug("[DISCONNECT DEBUG] WebSocket DISCONNECTED. WebSocket sessionId: {}, STOMP Principal: {}, Timestamp: {}",
+                headerAccessor.getSessionId(), stompSessionId, System.currentTimeMillis());
 
         // Try to find the player session associated with this WebSocket session
         PlayerSession playerSession = sessionMapper.findPlayerSessionBySessionId(stompSessionId);
@@ -86,36 +87,28 @@ public class WebSocketEventListener {
             String playerId = playerSession.getPlayerId();
             String gameId = playerSession.getGameId();
 
-            System.out.println("🔌 [DISCONNECT DEBUG] Player " + playerId + " disconnected from game " + gameId);
-            System.out.println("   [DISCONNECT DEBUG] Player name: " + playerSession.getDisplayName());
-            System.out.println("   [DISCONNECT DEBUG] Marking player as disconnected...");
-
-            // Mark the player as disconnected in SessionMapper
-            sessionMapper.markPlayerDisconnected(stompSessionId);
-
-            System.out.println("   [DISCONNECT DEBUG] Calling gameManager.handlePlayerDisconnect()...");
-            System.out.println("   [DISCONNECT DEBUG] This will start 30-second timeout timer");
+            logger.debug("[DISCONNECT DEBUG] Player {} disconnected from game {}, player name: {}. Notifying GameManager...",
+                    playerId, gameId, playerSession.getDisplayName());
 
             // Notify GameManager to handle the disconnect
             // This will:
-            // 1. Start the 30-second reconnection timer
-            // 2. Notify the opponent that player disconnected
-            // 3. Schedule game end if player doesn't reconnect
+            // 1. Mark the player disconnected in SessionMapper
+            // 2. Start the reconnection timer
+            // 3. Notify the opponent that player disconnected
+            // 4. Schedule game end if player doesn't reconnect
             gameManager.handlePlayerDisconnect(stompSessionId);
 
-            System.out.println("✅ [DISCONNECT DEBUG] Disconnect handled for player: " + playerId);
+            logger.debug("[DISCONNECT DEBUG] Disconnect handled for player: {}", playerId);
         } else {
             // No player session found
             // This happens when:
             // - Client connected but never joined a game
             // - Client was just browsing the lobby
             // - Connection dropped before game join
-            System.out.println("🔌 [DISCONNECT DEBUG] Disconnected session had no associated player: " + stompSessionId);
+            logger.debug("[DISCONNECT DEBUG] Disconnected session had no associated player: {}", stompSessionId);
 
             // Still clean up from session mapper just in case
             sessionMapper.removeSession(stompSessionId);
         }
-
-        System.out.println("=====================================");
     }
 }

@@ -5,6 +5,8 @@ import com.ludo.ludo_server.game.connection.StompGameEventBroadcaster;
 import com.ludo.ludo_server.game.state.GameState;
 import com.ludo.ludo_server.game.websocket.controller.GameResponse;
 import com.ludo.ludo_server.player.Player;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -20,6 +22,8 @@ import static com.ludo.ludo_server.game.websocket.controller.ResponseType.*;
  * This bridges the Game class with the WebSocket system
  */
 public class MultiplayerInputProvider implements InputProvider {
+
+    private static final Logger logger = LoggerFactory.getLogger(MultiplayerInputProvider.class);
 
     private static final int CHOICE_TIMEOUT_SECONDS = 30;
 
@@ -49,13 +53,13 @@ public class MultiplayerInputProvider implements InputProvider {
     public int getChoice(int min, int max, String prompt) {
         Player player = currentPlayer.get();
         if (player == null) {
-            System.err.println("No current player set for choice!");
+            logger.warn("No current player set for choice!");
             return min;
         }
 
         String sessionId = gameRoom.getSessionIdForPlayer(player);
         if (sessionId == null) {
-            System.err.println("Could not find session for player: " + player.getPlayerName());
+            logger.warn("Could not find session for player: {}", player.getPlayerName());
             return min;
         }
 
@@ -64,18 +68,16 @@ public class MultiplayerInputProvider implements InputProvider {
                 CompletableFuture<Integer> future = new CompletableFuture<>();
                 pendingChoices.put(sessionId, future);
 
-                System.out.println("Waiting for choice from " + player.getPlayerName() +
-                                 " (timeout: " + CHOICE_TIMEOUT_SECONDS + "s)");
+                logger.debug("Waiting for choice from {} (timeout: {}s)", player.getPlayerName(), CHOICE_TIMEOUT_SECONDS);
 
                 // Add timeout to prevent indefinite blocking
                 Integer choice = future.get(CHOICE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
                 if (choice >= min && choice <= max) {
-                    System.out.println("Valid choice " + choice + " from " + player.getPlayerName());
+                    logger.debug("Valid choice {} from {}", choice, player.getPlayerName());
                     return choice;
                 } else {
-                    System.out.println("Invalid choice " + choice + " from " + player.getPlayerName() +
-                                     ". Expected: " + min + "-" + max);
+                    logger.warn("Invalid choice {} from {}. Expected: {}-{}", choice, player.getPlayerName(), min, max);
                     broadcaster.sendToPlayer(sessionId,
                             GameResponse.error(INVALID_CHOICE,
                                     "Invalid choice " + choice + "! Please enter a number between " +
@@ -85,18 +87,16 @@ public class MultiplayerInputProvider implements InputProvider {
             } catch (TimeoutException e) {
                 // Player didn't respond within timeout - throw exception to end game
                 pendingChoices.remove(sessionId);
-                System.err.println("⏰ TIMEOUT: Player " + player.getPlayerName() +
-                                 " did not respond within " + CHOICE_TIMEOUT_SECONDS + " seconds");
+                logger.warn("TIMEOUT: Player {} did not respond within {} seconds", player.getPlayerName(), CHOICE_TIMEOUT_SECONDS);
 
                 throw new PlayerTimeoutException(sessionId, player.getPlayerId(), player.getPlayerName());
 
             } catch (InterruptedException e) {
-                System.err.println("Thread interrupted while waiting for choice");
+                logger.warn("Thread interrupted while waiting for choice");
                 Thread.currentThread().interrupt();
                 throw new PlayerTimeoutException(sessionId, player.getPlayerId(), player.getPlayerName());
             } catch (ExecutionException e) {
-                System.err.println("Error getting choice from player: " + e.getMessage());
-                e.printStackTrace();
+                logger.error("Error getting choice from player: {}", e.getMessage(), e);
                 throw new PlayerTimeoutException(sessionId, player.getPlayerId(), player.getPlayerName());
             }
         }
@@ -107,13 +107,13 @@ public class MultiplayerInputProvider implements InputProvider {
     public void waitForInput(String prompt) {
         Player player = currentPlayer.get();
         if (player == null) {
-            System.err.println("No current player set for input!");
+            logger.warn("No current player set for input!");
             return;
         }
 
         String sessionId = gameRoom.getSessionIdForPlayer(player);
         if (sessionId == null) {
-            System.err.println("Could not find session for player: " + player.getPlayerName());
+            logger.warn("Could not find session for player: {}", player.getPlayerName());
             return;
         }
 
@@ -128,28 +128,26 @@ public class MultiplayerInputProvider implements InputProvider {
             GameResponse inputRequest = GameResponse.success(INPUT_REQUIRED, prompt, currentGameState);
             broadcaster.sendToSession(sessionId, inputRequest);
 
-            System.out.println("Sent input request to " + player.getPlayerName() +
-                             " (timeout: " + CHOICE_TIMEOUT_SECONDS + "s)");
+            logger.debug("Sent input request to {} (timeout: {}s)", player.getPlayerName(), CHOICE_TIMEOUT_SECONDS);
 
             // Wait for any response with timeout
             String input = future.get(CHOICE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-            System.out.println("Received input '" + input + "' from " + player.getPlayerName());
+            logger.debug("Received input '{}' from {}", input, player.getPlayerName());
 
         } catch (TimeoutException e) {
             // Player didn't respond within timeout
             pendingInputs.remove(sessionId);
-            System.err.println("⏰ TIMEOUT: Player " + player.getPlayerName() +
-                             " did not respond to input request within " + CHOICE_TIMEOUT_SECONDS + " seconds");
+            logger.warn("TIMEOUT: Player {} did not respond to input request within {} seconds",
+                    player.getPlayerName(), CHOICE_TIMEOUT_SECONDS);
 
             throw new PlayerTimeoutException(sessionId, player.getPlayerId(), player.getPlayerName());
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            System.err.println("Thread interrupted while waiting for input");
+            logger.warn("Thread interrupted while waiting for input");
             throw new PlayerTimeoutException(sessionId, player.getPlayerId(), player.getPlayerName());
         } catch (ExecutionException e) {
-            System.err.println("Error waiting for input: " + e.getMessage());
-            e.printStackTrace();
+            logger.error("Error waiting for input: {}", e.getMessage(), e);
             throw new PlayerTimeoutException(sessionId, player.getPlayerId(), player.getPlayerName());
         }
     }
@@ -160,7 +158,7 @@ public class MultiplayerInputProvider implements InputProvider {
         broadcaster.broadcastToGame(gameId,
                 GameResponse.success(GAME_MESSAGE, message, null));
 
-        System.out.println("GAME MESSAGE [" + gameId + "]: " + message);
+        logger.debug("GAME MESSAGE [{}]: {}", gameId, message);
     }
 
     @Override
@@ -176,23 +174,23 @@ public class MultiplayerInputProvider implements InputProvider {
     public void handlePlayerChoice(String sessionId, int choice) {
         CompletableFuture<Integer> future = pendingChoices.remove(sessionId);
         if (future != null) {
-            System.out.println("Processing choice " + choice + " from session " + sessionId);
+            logger.debug("Processing choice {} from session {}", choice, sessionId);
             future.complete(choice); // This resumes the game thread!
         } else {
-            System.err.println("No pending choice for session: " + sessionId);
+            logger.warn("No pending choice for session: {}", sessionId);
         }
     }
 
     public void sendMoveOptions(String moveMessage, int max) {
         Player player = currentPlayer.get();
         if (player == null) {
-            System.err.println("No current player set for move options!");
+            logger.warn("No current player set for move options!");
             return;
         }
 
         String sessionId = gameRoom.getSessionIdForPlayer(player);
         if (sessionId == null) {
-            System.err.println("Could not find session for player: " + player.getPlayerName());
+            logger.warn("Could not find session for player: {}", player.getPlayerName());
             return;
         }
 
@@ -203,19 +201,19 @@ public class MultiplayerInputProvider implements InputProvider {
         broadcaster.sendToPlayer(sessionId,
                 GameResponse.success(MOVE_OPTIONS, fullMessage, null));
 
-        System.out.println("Move options sent to " + player.getPlayerName() + " (" + sessionId + ")");
+        logger.debug("Move options sent to {} ({})", player.getPlayerName(), sessionId);
     }
 
     public void sendCaptureOptions(String captureMessage, int max) {
         Player player = currentPlayer.get();
         if (player == null) {
-            System.err.println("No current player set for capture options!");
+            logger.warn("No current player set for capture options!");
             return;
         }
 
         String sessionId = gameRoom.getSessionIdForPlayer(player);
         if (sessionId == null) {
-            System.err.println("Could not find session for player: " + player.getPlayerName());
+            logger.warn("Could not find session for player: {}", player.getPlayerName());
             return;
         }
 
@@ -226,24 +224,24 @@ public class MultiplayerInputProvider implements InputProvider {
         broadcaster.sendToPlayer(sessionId,
                 GameResponse.success(CAPTURE_OPTIONS, fullMessage, null));
 
-        System.out.println("Capture options sent to " + player.getPlayerName() + " (" + sessionId + ")");
+        logger.debug("Capture options sent to {} ({})", player.getPlayerName(), sessionId);
     }
 
     public void handlePlayerInput(String sessionId, String input) {
         CompletableFuture<String> future = pendingInputs.remove(sessionId);
         if (future != null) {
-            System.out.println("Processing input '" + input + "' from session " + sessionId);
+            logger.debug("Processing input '{}' from session {}", input, sessionId);
             future.complete(input); // This resumes the game thread!
         } else {
-            System.err.println("No pending input for session: " + sessionId);
+            logger.warn("No pending input for session: {}", sessionId);
         }
     }
 
     // ========== DEBUG METHODS ==========
 
     public void debugPendingRequests() {
-        System.out.println("Pending choices for sessions: " + pendingChoices.keySet());
-        System.out.println("Pending inputs for sessions: " + pendingInputs.keySet());
+        logger.debug("Pending choices for sessions: {}", pendingChoices.keySet());
+        logger.debug("Pending inputs for sessions: {}", pendingInputs.keySet());
     }
 
     public boolean hasPendingRequest(String sessionId) {
@@ -253,13 +251,13 @@ public class MultiplayerInputProvider implements InputProvider {
     public void sendTurnNotification(String message) {
         Player player = currentPlayer.get();
         if (player == null) {
-            System.err.println("No current player set for turn notification!");
+            logger.warn("No current player set for turn notification!");
             return;
         }
 
         String sessionId = gameRoom.getSessionIdForPlayer(player);
         if (sessionId == null) {
-            System.err.println("Could not find session for player: " + player.getPlayerName());
+            logger.warn("Could not find session for player: {}", player.getPlayerName());
             return;
         }
 
@@ -267,12 +265,12 @@ public class MultiplayerInputProvider implements InputProvider {
         broadcaster.sendToPlayer(sessionId,
                 GameResponse.success(YOUR_TURN, message, null));
 
-        System.out.println("📤 Turn notification sent to " + player.getPlayerName() + " (" + sessionId + "): " + message);
+        logger.debug("Turn notification sent to {} ({}): {}", player.getPlayerName(), sessionId, message);
     }
 
     // Clear any stuck requests (for cleanup)
     public void clearPendingRequests() {
-        System.out.println("Clearing " + pendingChoices.size() + " pending choices and " + pendingInputs.size() + " pending inputs");
+        logger.debug("Clearing {} pending choices and {} pending inputs", pendingChoices.size(), pendingInputs.size());
 
         // Complete any pending futures with default values to avoid hanging
         pendingChoices.values().forEach(future -> future.complete(1));
