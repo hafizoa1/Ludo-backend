@@ -5,5 +5,6 @@ public enum MoveType {
     NORMAL,       // Regular move using one die
     COMBINED,     // Move using sum of both dice
     ENTER_HOME,   // Moving into the home column
-    FINISH
+    FINISH,
+    CAPTURE       // Choosing which capturable piece to capture (not a move of your own piece)
 }

@@ -14,6 +14,8 @@ import org.mockito.ArgumentCaptor;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import java.util.function.BooleanSupplier;
 import java.util.function.IntSupplier;
 import java.util.regex.Matcher;
@@ -35,16 +37,18 @@ class GameManagerTest {
     private GameIdGenerator gameIdGenerator;
     private SessionMapper sessionMapper;
     private StompGameEventBroadcaster broadcaster;
+    private Executor turnExecutor;
 
     @BeforeEach
     void setUp() {
         gameIdGenerator = new GameIdGenerator();
         sessionMapper = new SessionMapper();
         broadcaster = mock(StompGameEventBroadcaster.class);
+        turnExecutor = Executors.newFixedThreadPool(2);
     }
 
     private GameManager newGameManager(long disconnectTimeoutSeconds) {
-        return new GameManager(gameIdGenerator, sessionMapper, broadcaster, disconnectTimeoutSeconds);
+        return new GameManager(gameIdGenerator, sessionMapper, broadcaster, disconnectTimeoutSeconds, turnExecutor);
     }
 
     private String extractGameId(GameResponse response) {

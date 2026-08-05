@@ -3,6 +3,8 @@ package com.ludo.ludo_server.game;
 import com.ludo.ludo_server.board.Board;
 import com.ludo.ludo_server.board.Position;
 import com.ludo.ludo_server.game.input.InputProvider;
+import com.ludo.ludo_server.piece.MoveOption;
+import com.ludo.ludo_server.piece.MoveType;
 import com.ludo.ludo_server.piece.Piece;
 import com.ludo.ludo_server.player.HumanPlayer;
 import com.ludo.ludo_server.player.Player;
@@ -241,6 +243,32 @@ class GameTest {
             assertThat(target2.isAtHome()).isTrue();
             assertThat(target1.isAtHome()).isFalse();
             assertThat(target1.getBoardPosition()).isEqualTo(landing);
+        }
+
+        @Test
+        @DisplayName("multiple capturable pieces are exposed as structured CAPTURE options before the choice resolves")
+        void multipleCapturablePieces_exposedAsStructuredOptions() {
+            Piece mover = redPlayer.getPieces()[0];
+            stageActive(mover, 10);
+            Position landing = mover.calculateNewPosition(3);
+
+            Piece target1 = bluePlayer.getPieces()[0];
+            Piece target2 = bluePlayer.getPieces()[1];
+            stageActiveAt(target1, landing, 10);
+            stageActiveAt(target2, landing, 12);
+
+            inputProvider.willChoose(1);
+
+            game.getMoveExecutor().movePiece(mover, redPlayer, 3);
+
+            // Nothing after the capture resolves clears currentOptions in this
+            // direct-call scenario, so this is exactly what was offered right
+            // before the choice was made.
+            List<MoveOption> offered = game.getCurrentOptions();
+            assertThat(offered).hasSize(2);
+            assertThat(offered).allMatch(option -> option.getMoveType() == MoveType.CAPTURE);
+            assertThat(offered.stream().map(option -> option.getPiece().getId()))
+                    .containsExactly(target1.getId(), target2.getId());
         }
 
         @Test

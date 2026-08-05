@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * Resolves what moves a player can make and what happens when a move is
@@ -27,10 +28,15 @@ public class MoveExecutor {
 
     private final Board board;
     private final InputProvider inputProvider;
+    // Reports back whatever choices (moves or capture targets) were just
+    // offered, so Game can include them in the next GameState snapshot -
+    // MoveExecutor doesn't hold a reference to Game itself, this is the seam.
+    private final Consumer<List<MoveOption>> onOptionsOffered;
 
-    public MoveExecutor(Board board, InputProvider inputProvider) {
+    public MoveExecutor(Board board, InputProvider inputProvider, Consumer<List<MoveOption>> onOptionsOffered) {
         this.board = board;
         this.inputProvider = inputProvider;
+        this.onOptionsOffered = onOptionsOffered;
     }
 
     public List<MoveOption> calculatePossibleMoves(Player currentPlayer, List<Integer> availableDice) {
@@ -122,11 +128,11 @@ public class MoveExecutor {
             capturePiece(movingPiece, capturablePieces.get(0));
         } else {
             // Multiple pieces can be captured - let player choose
-            choosePieceToCapture(movingPiece, capturablePieces);
+            choosePieceToCapture(player, movingPiece, capturablePieces);
         }
     }
 
-    private void choosePieceToCapture(Piece capturingPiece, List<Piece> capturablePieces) {
+    private void choosePieceToCapture(Player player, Piece capturingPiece, List<Piece> capturablePieces) {
         // Build the capture options message
         StringBuilder captureOptions = new StringBuilder();
         captureOptions.append(capturingPiece.getId()).append(" can capture multiple pieces:\n");
@@ -137,6 +143,15 @@ public class MoveExecutor {
                          .append(piece.getId()).append(" (")
                          .append(piece.getColor()).append(")\n");
         }
+
+        // Report what's being offered (as MoveOptions, same shape as a normal
+        // move choice) before sending the message, so the snapshot attached
+        // to that message already reflects these as the current options.
+        List<MoveOption> captureChoices = new ArrayList<>();
+        for (Piece capturable : capturablePieces) {
+            captureChoices.add(new MoveOption(player, capturable, 0, MoveType.CAPTURE));
+        }
+        onOptionsOffered.accept(captureChoices);
 
         // Send capture options using the proper message type
         if (inputProvider instanceof MultiplayerInputProvider) {

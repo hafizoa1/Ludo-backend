@@ -13,7 +13,9 @@ public class MoveOption {
     private final Piece piece;
     @Getter
     private final int diceValue;
+    @Getter
     private final MoveType moveType;
+    @Getter
     private final Position targetPosition;
     private final String description;
 
@@ -60,6 +62,11 @@ public class MoveOption {
                 break;
             case FINISH:
                 desc.append(": Finish the game!");
+                break;
+            case CAPTURE:
+                desc.append(": Capture this piece");
+                break;
+            default:
                 break;
         }
 

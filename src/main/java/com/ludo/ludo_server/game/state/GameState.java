@@ -21,7 +21,7 @@ public class GameState {
     private String currentPlayerId;
     private List<PlayerState> players;
     private List<PieceState> pieces;
-    private List<MoveOption> availableMoves;
+    private List<MoveOptionState> availableMoves;
     private boolean gameOver;
     private String winner;
     private String gameStatus;
@@ -52,8 +52,17 @@ public class GameState {
             this.winner = game.getWinner();
         }
 
-        // Available moves (empty for now, populate when needed)
-        this.availableMoves = new ArrayList<>();
+        // Whatever choices (moves or capture targets) are currently offered
+        // to the current player, indexed to match the /app/game.choice reply.
+        this.availableMoves = buildAvailableMoves(game.getCurrentOptions());
+    }
+
+    private List<MoveOptionState> buildAvailableMoves(List<MoveOption> currentOptions) {
+        List<MoveOptionState> states = new ArrayList<>();
+        for (int i = 0; i < currentOptions.size(); i++) {
+            states.add(new MoveOptionState(i + 1, currentOptions.get(i)));
+        }
+        return states;
     }
 
     // Extract all pieces from the board

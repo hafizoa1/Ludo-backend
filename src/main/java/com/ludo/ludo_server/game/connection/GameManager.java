@@ -55,14 +55,17 @@ public class GameManager {
     private final SessionMapper sessionMapper;
     private final StompGameEventBroadcaster broadcaster;
     private final long disconnectTimeoutSeconds;
+    private final Executor turnExecutor;
 
     public GameManager(GameIdGenerator gameIdGenerator, SessionMapper sessionMapper,
                         StompGameEventBroadcaster broadcaster,
-                        @Value("${game.disconnect-timeout-seconds:30}") long disconnectTimeoutSeconds) {
+                        @Value("${game.disconnect-timeout-seconds:30}") long disconnectTimeoutSeconds,
+                        Executor gameTurnExecutor) {
         this.gameIdGenerator = gameIdGenerator;
         this.sessionMapper = sessionMapper;
         this.broadcaster = broadcaster;
         this.disconnectTimeoutSeconds = disconnectTimeoutSeconds;
+        this.turnExecutor = gameTurnExecutor;
     }
 
     private final Map<String, GameRoom> gameRooms = new ConcurrentHashMap<>();
@@ -88,7 +91,7 @@ public class GameManager {
     // which only means "this player's identity within this one Game instance".
     public GameResponse createGame(String sessionId, String playerId) {
         String gameId = gameIdGenerator.generateGameId();
-        GameRoom gameRoom = new GameRoom(gameId, DEFAULT_MAX_PLAYERS, broadcaster);
+        GameRoom gameRoom = new GameRoom(gameId, DEFAULT_MAX_PLAYERS, broadcaster, turnExecutor);
 
         Player creator = new HumanPlayer("player1", "Player 1", PLAYER1_COLORS);
         gameRoom.addPlayer(sessionId, creator);
@@ -161,6 +164,10 @@ public class GameManager {
             gameRoom.startGame();
             message = "All players joined! Game starting...";
         }
+
+        // Notify the room a new player joined - reconnections get their own
+        // distinct message above instead, so this only fires for genuinely new players.
+        broadcaster.broadcastToGame(gameId, GameResponse.success(PLAYER_JOINED, "New player joined", null));
 
         return GameResponse.success(JOINED_GAME, message);
     }
@@ -240,7 +247,7 @@ public class GameManager {
                 } catch (Exception e) {
                     logger.error("Error continuing game after dice roll: {}", e.getMessage(), e);
                 }
-            });
+            }, turnExecutor);
 
             return GameResponse.success(DICE_ROLL_RECEIVED, "Processing dice roll...");
 

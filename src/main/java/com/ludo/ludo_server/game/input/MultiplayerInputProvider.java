@@ -197,9 +197,11 @@ public class MultiplayerInputProvider implements InputProvider {
         // Add the choice prompt to the move message
         String fullMessage = moveMessage + "\nEnter game option (1-" + max + ")";
 
-        // Send complete move list + prompt to current player's personal queue only
+        // Send complete move list + prompt to current player's personal queue only,
+        // with the structured options attached via the current GameState snapshot
+        GameState currentGameState = gameRoom.getGame().getGameState();
         broadcaster.sendToPlayer(sessionId,
-                GameResponse.success(MOVE_OPTIONS, fullMessage, null));
+                GameResponse.success(MOVE_OPTIONS, fullMessage, currentGameState));
 
         logger.debug("Move options sent to {} ({})", player.getPlayerName(), sessionId);
     }
@@ -220,9 +222,11 @@ public class MultiplayerInputProvider implements InputProvider {
         // Add the choice prompt to the capture message
         String fullMessage = captureMessage + "\nChoose which piece to capture (1-" + max + ")";
 
-        // Send capture options to current player's personal queue
+        // Send capture options to current player's personal queue, with the
+        // structured options attached via the current GameState snapshot
+        GameState currentGameState = gameRoom.getGame().getGameState();
         broadcaster.sendToPlayer(sessionId,
-                GameResponse.success(CAPTURE_OPTIONS, fullMessage, null));
+                GameResponse.success(CAPTURE_OPTIONS, fullMessage, currentGameState));
 
         logger.debug("Capture options sent to {} ({})", player.getPlayerName(), sessionId);
     }

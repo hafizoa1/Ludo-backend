@@ -35,6 +35,10 @@ public class Game {
     private StompGameEventBroadcaster broadcaster;
     private String gameId;
     private MoveExecutor moveExecutor;
+    // Whatever choices (moves or capture targets) were most recently offered
+    // to the current player - included in GameState snapshots so clients get
+    // structured data instead of having to parse the human-readable message.
+    private List<MoveOption> currentOptions = new ArrayList<>();
 
     public Game(List<Player> players, InputProvider inputProvider,
                 StompGameEventBroadcaster broadcaster, String gameId) {
@@ -46,7 +50,8 @@ public class Game {
         this.currentPlayer = players.get(currentPlayerIndex);
         this.broadcaster = broadcaster;  // ADD THIS
         this.gameId = gameId;
-        this.moveExecutor = new MoveExecutor(this.board, this.inputProvider);
+        this.moveExecutor = new MoveExecutor(this.board, this.inputProvider,
+                options -> this.currentOptions = options);
     }
 
     public GameState getGameState() {
@@ -172,10 +177,13 @@ public class Game {
             logger.debug("Found {} possible moves", availableMoves.size());
 
             if (availableMoves.isEmpty()) {
+                currentOptions = new ArrayList<>();
                 inputProvider.sendMessage("No more viable moves. Turn ends.");
                 logger.debug("No moves available, ending turn");
                 break;
             }
+
+            currentOptions = availableMoves;
 
             // Display moves as one batched message
              displayAvailableMoves(availableMoves);
@@ -199,6 +207,7 @@ public class Game {
             logger.debug("Using dice value: {}", selectedMove.getDiceValue());
 
             executeMove(selectedMove);
+            currentOptions = new ArrayList<>(); // the offered choice has now been resolved
 
             if (broadcaster != null && gameId != null) {
                 GameState currentState = getGameState();
@@ -225,8 +234,6 @@ public class Game {
         Player movingPlayer = move.getPlayer();
 
         moveExecutor.movePiece(piece, movingPlayer, diceValue);
-
-        inputProvider.sendMessage("Used die value: " + diceValue);
     }
 
     private void displayAvailableMoves(List<MoveOption> moves) {

@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
 
 import static com.ludo.ludo_server.game.websocket.controller.ResponseType.GAME_ENDED;
 import static com.ludo.ludo_server.game.websocket.controller.ResponseType.GAME_ENDED_TIMEOUT;
@@ -59,12 +60,13 @@ public class GameRoom {
     private GameRoomStatus status;
     private final int maxPlayers;
     private StompGameEventBroadcaster broadcaster;
+    private Executor turnExecutor;
 
-    // Updated constructor to take broadcaster
-    public GameRoom(String gameId, int maxPlayers, StompGameEventBroadcaster broadcaster) {
+    public GameRoom(String gameId, int maxPlayers, StompGameEventBroadcaster broadcaster, Executor turnExecutor) {
         this.gameId = gameId;
         this.maxPlayers = maxPlayers;
         this.broadcaster = broadcaster;
+        this.turnExecutor = turnExecutor;
         this.sessionIds = new ArrayList<>();
         this.sessionToPlayer = new ConcurrentHashMap<>();
         this.status = GameRoomStatus.WAITING_FOR_PLAYERS;
@@ -136,7 +138,7 @@ public class GameRoom {
                 logger.error("Game error: {}", e.getMessage(), e);
                 status = GameRoomStatus.FINISHED;
             }
-        });
+        }, turnExecutor);
 
         logger.info("Game started for room: {}", gameId);
     }

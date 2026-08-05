@@ -65,15 +65,7 @@ public class GameStompController {
 
         logger.debug("[{}] Join game: {} (playerId: {})", sessionId, gameId, playerId);
 
-        GameResponse response = gameManager.joinGame(sessionId, gameId, playerId);
-
-        // If successful join, notify all players in the game
-        if (response.isSuccess()) {
-            messagingTemplate.convertAndSend("/topic/game/" + gameId + "/players",
-                    GameResponse.success(PLAYER_JOINED, "New player joined", response.getData()));
-        }
-
-        return response;
+        return gameManager.joinGame(sessionId, gameId, playerId);
     }
 
     @MessageMapping("/game.leave")
