@@ -470,4 +470,8 @@ public class GameManager {
         String gameId = sessionMapper.getGameId(sessionId);
         return gameId != null ? gameRooms.get(gameId) : null;
     }
+
+    public int getActiveGameCount() {
+        return gameRooms.size();
+    }
 }

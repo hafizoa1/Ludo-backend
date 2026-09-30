@@ -163,4 +163,15 @@ public class SessionMapper {
                 .filter(PlayerSession::isConnected)
                 .count();
     }
+
+    /**
+     * Total players currently connected, across every game. A player who
+     * disconnected but is still within their reconnect window counts as
+     * not-connected here - this reflects who's actually online right now.
+     */
+    public long getActivePlayerCount() {
+        return playerSessions.values().stream()
+                .filter(PlayerSession::isConnected)
+                .count();
+    }
 }
