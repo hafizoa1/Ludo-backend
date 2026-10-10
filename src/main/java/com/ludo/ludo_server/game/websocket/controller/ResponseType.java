@@ -28,5 +28,6 @@ public enum ResponseType {
     ROLL_ERROR,
     PLAYER_JOINED,
     GAME_ENDED_TIMEOUT,
-    GAME_ENDED
+    GAME_ENDED,
+    LOBBY_EXPIRED
 }

@@ -55,16 +55,19 @@ public class GameManager {
     private final SessionMapper sessionMapper;
     private final StompGameEventBroadcaster broadcaster;
     private final long disconnectTimeoutSeconds;
+    private final long joinTimeoutSeconds;
     private final Executor turnExecutor;
 
     public GameManager(GameIdGenerator gameIdGenerator, SessionMapper sessionMapper,
                         StompGameEventBroadcaster broadcaster,
                         @Value("${game.disconnect-timeout-seconds:30}") long disconnectTimeoutSeconds,
+                        @Value("${game.join-timeout-seconds:300}") long joinTimeoutSeconds,
                         Executor gameTurnExecutor) {
         this.gameIdGenerator = gameIdGenerator;
         this.sessionMapper = sessionMapper;
         this.broadcaster = broadcaster;
         this.disconnectTimeoutSeconds = disconnectTimeoutSeconds;
+        this.joinTimeoutSeconds = joinTimeoutSeconds;
         this.turnExecutor = gameTurnExecutor;
     }
 
@@ -76,6 +79,11 @@ public class GameManager {
 
     // Track scheduled disconnect tasks so we can cancel them on reconnect
     private final Map<String, ScheduledFuture<?>> disconnectTasks = new ConcurrentHashMap<>();
+
+    // Track scheduled join-timeout tasks (keyed by gameId, not playerId - this
+    // fires while a room is still WAITING_FOR_PLAYERS, before there's a second
+    // player to key anything off of) so we can cancel them once the room fills.
+    private final Map<String, ScheduledFuture<?>> joinTimeoutTasks = new ConcurrentHashMap<>();
 
     // 2-player setup: each player gets 2 colors
     private static final List<PlayerColor> PLAYER1_COLORS = List.of(PlayerColor.RED, PlayerColor.YELLOW);
@@ -101,8 +109,45 @@ public class GameManager {
         // Register PlayerSession for reconnection support
         sessionMapper.createPlayerSession(playerId, sessionId, gameId, creator);
 
+        scheduleJoinTimeout(gameId);
+
         return GameResponse.success(GAME_CREATED,
                 "Game " + gameId + " created. Waiting for players (1/" + DEFAULT_MAX_PLAYERS + ")");
+    }
+
+    /**
+     * A room sits in WAITING_FOR_PLAYERS indefinitely with nothing to expire
+     * it otherwise - this gives up and tears it down if no one ever joins.
+     */
+    private void scheduleJoinTimeout(String gameId) {
+        ScheduledFuture<?> joinTimeoutTask = scheduler.schedule(() -> {
+            handleJoinTimeout(gameId);
+        }, joinTimeoutSeconds, TimeUnit.SECONDS);
+
+        joinTimeoutTasks.put(gameId, joinTimeoutTask);
+    }
+
+    /**
+     * Called after joinTimeoutSeconds if the room never filled up.
+     */
+    private void handleJoinTimeout(String gameId) {
+        joinTimeoutTasks.remove(gameId);
+
+        GameRoom gameRoom = getGameRoom(gameId);
+        if (gameRoom == null || gameRoom.getStatus() != GameRoom.GameRoomStatus.WAITING_FOR_PLAYERS) {
+            // Already filled, left, or cleaned up some other way - nothing to do.
+            return;
+        }
+
+        logger.info("Game {} expired - no one joined within {}s", gameId, joinTimeoutSeconds);
+
+        for (String sid : gameRoom.getSessionIds()) {
+            broadcaster.sendToPlayer(sid,
+                    GameResponse.error(LOBBY_EXPIRED,
+                            "No one joined within " + (joinTimeoutSeconds / 60) + " minutes. Create a new game to try again."));
+        }
+
+        endGame(gameId, gameRoom);
     }
 
     public GameResponse joinGame(String sessionId, String gameId, String playerId) {
@@ -161,6 +206,12 @@ public class GameManager {
 
         if (gameRoom.isReady()) {
             logger.info("Starting game {}", gameId);
+
+            ScheduledFuture<?> joinTimeoutTask = joinTimeoutTasks.remove(gameId);
+            if (joinTimeoutTask != null) {
+                joinTimeoutTask.cancel(false);
+            }
+
             gameRoom.startGame();
             message = "All players joined! Game starting...";
         }
@@ -181,10 +232,23 @@ public class GameManager {
 
         GameRoom gameRoom = gameRooms.get(gameId);
         if (gameRoom != null) {
+            boolean gameWasInProgress = gameRoom.getStatus() == GameRoom.GameRoomStatus.IN_PROGRESS;
+            Player leavingPlayer = gameRoom.getPlayer(sessionId);
+            String leavingPlayerName = leavingPlayer != null ? leavingPlayer.getPlayerName() : "Opponent";
+
             gameRoom.removePlayer(sessionId);
 
             if (gameRoom.getSessionIds().isEmpty()) {
-                gameRooms.remove(gameId);
+                // Solo in the room (either still waiting for a second player,
+                // or the last one left after the other already departed) -
+                // nothing left to forfeit against, just tear it down.
+                endGame(gameId, gameRoom);
+            } else if (gameWasInProgress) {
+                // Opponent is still connected mid-game - forfeit immediately
+                // instead of leaving them to hang until the departed player's
+                // turn eventually trips the response timeout.
+                gameRoom.endByLeave(sessionId, leavingPlayerName);
+                endGame(gameId, gameRoom);
             }
         }
 
@@ -445,6 +509,11 @@ public class GameManager {
      */
     private void endGame(String gameId, GameRoom gameRoom) {
         gameRooms.remove(gameId);
+
+        ScheduledFuture<?> joinTimeoutTask = joinTimeoutTasks.remove(gameId);
+        if (joinTimeoutTask != null) {
+            joinTimeoutTask.cancel(false);
+        }
 
         for (String sid : gameRoom.getSessionIds()) {
             PlayerSession session = sessionMapper.findPlayerSessionBySessionId(sid);

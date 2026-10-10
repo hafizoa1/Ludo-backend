@@ -157,7 +157,7 @@ public class GameRoom {
      * the other player wins by forfeit.
      */
     public void endByTimeout(String timedOutSessionId, String timedOutPlayerName) {
-        announceForfeit(timedOutSessionId, timedOutPlayerName, false);
+        announceForfeit(timedOutSessionId, timedOutPlayerName, ForfeitReason.TIMEOUT);
     }
 
     /**
@@ -165,10 +165,23 @@ public class GameRoom {
      * the other player wins by forfeit.
      */
     public void endByDisconnect(String disconnectedSessionId, String disconnectedPlayerName) {
-        announceForfeit(disconnectedSessionId, disconnectedPlayerName, true);
+        announceForfeit(disconnectedSessionId, disconnectedPlayerName, ForfeitReason.DISCONNECT);
     }
 
-    private void announceForfeit(String forfeitingSessionId, String forfeitingPlayerName, boolean wasDisconnect) {
+    /**
+     * End this room because a player deliberately left mid-game - the other
+     * player wins immediately by forfeit, rather than being left to hang
+     * until the departed player's turn eventually trips the response timeout.
+     */
+    public void endByLeave(String leavingSessionId, String leavingPlayerName) {
+        announceForfeit(leavingSessionId, leavingPlayerName, ForfeitReason.LEFT);
+    }
+
+    private enum ForfeitReason {
+        TIMEOUT, DISCONNECT, LEFT
+    }
+
+    private void announceForfeit(String forfeitingSessionId, String forfeitingPlayerName, ForfeitReason reason) {
         status = GameRoomStatus.FINISHED;
 
         String winnerSessionId = null;
@@ -185,7 +198,7 @@ public class GameRoom {
         }
 
         if (winnerSessionId != null) {
-            if (wasDisconnect) {
+            if (reason == ForfeitReason.DISCONNECT) {
                 // Disconnect messages embed colors (format: "color1,color2|message")
                 // so the frontend can show which pieces belonged to whom.
                 String winnerColors = colorsOf(getPlayer(winnerSessionId));
@@ -196,6 +209,13 @@ public class GameRoom {
                 broadcaster.sendToPlayer(forfeitingSessionId,
                         GameResponse.error(GAME_ENDED_TIMEOUT,
                                 forfeitingColors + "|You disconnected and did not reconnect. Game has ended - " + winnerName + " wins."));
+            } else if (reason == ForfeitReason.LEFT) {
+                broadcaster.sendToPlayer(winnerSessionId,
+                        GameResponse.success(GAME_ENDED_TIMEOUT,
+                                forfeitingPlayerName + " left the game. Game has ended - You win!"));
+                // No message sent to forfeitingSessionId here - they chose to
+                // leave and already got LEFT_GAME as the direct response to
+                // their own game.leave request.
             } else {
                 broadcaster.sendToPlayer(winnerSessionId,
                         GameResponse.success(GAME_ENDED_TIMEOUT,
@@ -206,7 +226,11 @@ public class GameRoom {
             }
         }
 
-        String reasonPhrase = wasDisconnect ? "disconnected." : "is unresponsive.";
+        String reasonPhrase = switch (reason) {
+            case DISCONNECT -> "disconnected.";
+            case LEFT -> "left the game.";
+            case TIMEOUT -> "is unresponsive.";
+        };
         broadcaster.broadcastToGame(gameId,
                 GameResponse.success(GAME_ENDED_TIMEOUT, forfeitingPlayerName + " " + reasonPhrase + " Game has ended."));
     }

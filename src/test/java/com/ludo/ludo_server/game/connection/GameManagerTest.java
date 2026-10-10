@@ -48,7 +48,15 @@ class GameManagerTest {
     }
 
     private GameManager newGameManager(long disconnectTimeoutSeconds) {
-        return new GameManager(gameIdGenerator, sessionMapper, broadcaster, disconnectTimeoutSeconds, turnExecutor);
+        // Large join-timeout default so existing disconnect-timeout tests
+        // (which use short disconnectTimeoutSeconds like 0/1 to fire fast)
+        // never race against it.
+        return newGameManager(disconnectTimeoutSeconds, 300);
+    }
+
+    private GameManager newGameManager(long disconnectTimeoutSeconds, long joinTimeoutSeconds) {
+        return new GameManager(gameIdGenerator, sessionMapper, broadcaster,
+                disconnectTimeoutSeconds, joinTimeoutSeconds, turnExecutor);
     }
 
     private String extractGameId(GameResponse response) {
@@ -199,14 +207,54 @@ class GameManagerTest {
         }
 
         @Test
-        @DisplayName("one of two players leaving keeps the room alive")
-        void leaveGame_onePlayerOfTwo_keepsRoom() {
+        @DisplayName("one player leaving mid-game immediately forfeits - the room ends, not hangs")
+        void leaveGame_midGame_immediatelyForfeits() {
             GameManager gameManager = newGameManager(30);
             String gameId = extractGameId(gameManager.createGame("session1", "player1id"));
             gameManager.joinGame("session2", gameId, "player2id");
+            // joinGame starts the game synchronously once full, so the room is
+            // already IN_PROGRESS here - this is deliberately NOT the "room still
+            // waiting for a second player" case, which is covered separately.
 
             gameManager.leaveGame("session1");
 
+            // Previously this left the room alive indefinitely, stuck until the
+            // departed player's turn eventually tripped the response timeout.
+            // Leaving mid-game should forfeit immediately instead.
+            assertThat(gameManager.getGameRoom(gameId)).isNull();
+            assertThat(sessionMapper.findPlayerSessionBySessionId("session2")).isNull();
+
+            ArgumentCaptor<GameResponse> captor = ArgumentCaptor.forClass(GameResponse.class);
+            verify(broadcaster, atLeastOnce()).broadcastToGame(eq(gameId), captor.capture());
+            assertThat(captor.getAllValues())
+                    .anyMatch(r -> r.getType() == GAME_ENDED_TIMEOUT && r.getMessage().contains("left the game"));
+        }
+
+        @Test
+        @DisplayName("a room with no second player expires after the join timeout")
+        void noSecondPlayer_expiresRoom() {
+            GameManager gameManager = newGameManager(30, 0); // join-timeout fires (almost) immediately
+            String gameId = extractGameId(gameManager.createGame("session1", "player1id"));
+
+            awaitUntil(() -> gameManager.getGameRoom(gameId) == null, Duration.ofSeconds(2));
+            assertThat(sessionMapper.findPlayerSessionByPlayerId("player1id")).isNull();
+
+            ArgumentCaptor<GameResponse> captor = ArgumentCaptor.forClass(GameResponse.class);
+            verify(broadcaster, atLeastOnce()).sendToPlayer(eq("session1"), captor.capture());
+            assertThat(captor.getAllValues()).anyMatch(r -> r.getType() == LOBBY_EXPIRED);
+        }
+
+        @Test
+        @DisplayName("a second player joining before the join timeout cancels it - the room survives")
+        void secondPlayerJoins_cancelsJoinTimeout() throws InterruptedException {
+            GameManager gameManager = newGameManager(30, 1); // 1s join-timeout window
+            String gameId = extractGameId(gameManager.createGame("session1", "player1id"));
+
+            Thread.sleep(200); // well inside the 1s window
+            gameManager.joinGame("session2", gameId, "player2id");
+
+            // wait past the original 1s window and confirm cleanup did NOT happen
+            Thread.sleep(1200);
             assertThat(gameManager.getGameRoom(gameId)).isNotNull();
         }
     }
