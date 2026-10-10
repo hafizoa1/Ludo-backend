@@ -79,36 +79,49 @@ public class WebSocketEventListener {
         logger.debug("[DISCONNECT DEBUG] WebSocket DISCONNECTED. WebSocket sessionId: {}, STOMP Principal: {}, Timestamp: {}",
                 headerAccessor.getSessionId(), stompSessionId, System.currentTimeMillis());
 
-        // Try to find the player session associated with this WebSocket session
-        PlayerSession playerSession = sessionMapper.findPlayerSessionBySessionId(stompSessionId);
+        // This is an @EventListener, not a @MessageMapping - there's no
+        // client waiting on a response to send an error back to, and no
+        // equivalent of GameStompController's @MessageExceptionHandler
+        // covers this path. Without this try/catch, an unexpected exception
+        // here (e.g. from gameManager.handlePlayerDisconnect) would propagate
+        // into Spring's own event-dispatch machinery with none of our
+        // context attached, and potentially leave this player's session
+        // stuck mid-cleanup with nothing pointing at why.
+        try {
+            // Try to find the player session associated with this WebSocket session
+            PlayerSession playerSession = sessionMapper.findPlayerSessionBySessionId(stompSessionId);
 
-        if (playerSession != null) {
-            // Found the player - they were in a game
-            String playerId = playerSession.getPlayerId();
-            String gameId = playerSession.getGameId();
+            if (playerSession != null) {
+                // Found the player - they were in a game
+                String playerId = playerSession.getPlayerId();
+                String gameId = playerSession.getGameId();
 
-            logger.debug("[DISCONNECT DEBUG] Player {} disconnected from game {}, player name: {}. Notifying GameManager...",
-                    playerId, gameId, playerSession.getDisplayName());
+                logger.debug("[DISCONNECT DEBUG] Player {} disconnected from game {}, player name: {}. Notifying GameManager...",
+                        playerId, gameId, playerSession.getDisplayName());
 
-            // Notify GameManager to handle the disconnect
-            // This will:
-            // 1. Mark the player disconnected in SessionMapper
-            // 2. Start the reconnection timer
-            // 3. Notify the opponent that player disconnected
-            // 4. Schedule game end if player doesn't reconnect
-            gameManager.handlePlayerDisconnect(stompSessionId);
+                // Notify GameManager to handle the disconnect
+                // This will:
+                // 1. Mark the player disconnected in SessionMapper
+                // 2. Start the reconnection timer
+                // 3. Notify the opponent that player disconnected
+                // 4. Schedule game end if player doesn't reconnect
+                gameManager.handlePlayerDisconnect(stompSessionId);
 
-            logger.debug("[DISCONNECT DEBUG] Disconnect handled for player: {}", playerId);
-        } else {
-            // No player session found
-            // This happens when:
-            // - Client connected but never joined a game
-            // - Client was just browsing the lobby
-            // - Connection dropped before game join
-            logger.debug("[DISCONNECT DEBUG] Disconnected session had no associated player: {}", stompSessionId);
+                logger.debug("[DISCONNECT DEBUG] Disconnect handled for player: {}", playerId);
+            } else {
+                // No player session found
+                // This happens when:
+                // - Client connected but never joined a game
+                // - Client was just browsing the lobby
+                // - Connection dropped before game join
+                logger.debug("[DISCONNECT DEBUG] Disconnected session had no associated player: {}", stompSessionId);
 
-            // Still clean up from session mapper just in case
-            sessionMapper.removeSession(stompSessionId);
+                // Still clean up from session mapper just in case
+                sessionMapper.removeSession(stompSessionId);
+            }
+        } catch (Exception e) {
+            logger.error("[DISCONNECT] Unexpected error handling disconnect for session {}: {}",
+                    stompSessionId, e.getMessage(), e);
         }
     }
 }

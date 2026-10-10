@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.ludo.ludo_server.game.connection.GameManager;
+import org.springframework.messaging.handler.annotation.MessageExceptionHandler;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.messaging.simp.annotation.SendToUser;
@@ -99,7 +100,12 @@ public class GameStompController {
             // Send a personal response to the user about their roll request
             messagingTemplate.convertAndSendToUser(sessionId, "/queue/response", response);
         } catch (Exception e) {
-            // Handle any unexpected errors
+            // This used to swallow the exception entirely - fly logs showed
+            // nothing while the player just saw a generic error. Logging it
+            // here instead of relying on the global handleException() below
+            // because this already has a more specific ROLL_ERROR response
+            // worth keeping.
+            logger.error("[{}] Unexpected error during dice roll: {}", sessionId, e.getMessage(), e);
             GameResponse errorResponse = GameResponse.error(ROLL_ERROR, "Unexpected error during dice roll");
             messagingTemplate.convertAndSendToUser(sessionId, "/queue/response", errorResponse);
         }
@@ -132,6 +138,29 @@ public class GameStompController {
     public GameResponse getGameState(Principal user) {
         String sessionId = user.getName();
         return gameManager.getGameState(sessionId);
+    }
+
+    // =============================================================================
+    // FALLBACK ERROR HANDLING
+    // =============================================================================
+
+    /**
+     * Catches anything that escapes any @MessageMapping method above that
+     * doesn't already have its own try/catch (createGame, joinGame,
+     * leaveGame, getGameState, makeChoice all had none before this). Without
+     * this, an unexpected exception there meant the client got silence - no
+     * response at all - and whatever Spring logged by default carried none
+     * of our own context (session, which action was being attempted).
+     *
+     * rollDice is unaffected by this - it already catches its own exceptions
+     * to return a more specific ROLL_ERROR response.
+     */
+    @MessageExceptionHandler(Exception.class)
+    @SendToUser("/queue/response")
+    public GameResponse handleException(Exception exception, Principal user) {
+        String sessionId = (user != null) ? user.getName() : "unknown";
+        logger.error("[{}] Unhandled exception in STOMP handler: {}", sessionId, exception.getMessage(), exception);
+        return GameResponse.error(SERVER_ERROR, "An unexpected error occurred. Please try again.");
     }
 }
 

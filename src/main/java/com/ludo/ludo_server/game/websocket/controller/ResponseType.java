@@ -29,5 +29,6 @@ public enum ResponseType {
     PLAYER_JOINED,
     GAME_ENDED_TIMEOUT,
     GAME_ENDED,
-    LOBBY_EXPIRED
+    LOBBY_EXPIRED,
+    SERVER_ERROR
 }
