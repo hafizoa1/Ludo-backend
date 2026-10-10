@@ -267,7 +267,12 @@ class GameTest {
             List<MoveOption> offered = game.getCurrentOptions();
             assertThat(offered).hasSize(2);
             assertThat(offered).allMatch(option -> option.getMoveType() == MoveType.CAPTURE);
-            assertThat(offered.stream().map(option -> option.getPiece().getId()))
+            // piece is always the one doing the capturing (mover) - previously
+            // this was backwards, using the piece ABOUT to be captured as the
+            // subject. The actual target of each option is in
+            // capturablePieceIds instead.
+            assertThat(offered).allMatch(option -> option.getPiece().equals(mover));
+            assertThat(offered.stream().map(option -> option.getCapturablePieceIds().get(0)))
                     .containsExactly(target1.getId(), target2.getId());
         }
 
@@ -305,6 +310,77 @@ class GameTest {
 
             assertThat(mover.isFinished()).isFalse(); // no capture happened
             assertThat(mover.getPathPosition()).isEqualTo(13);
+        }
+
+        // =====================================================================
+        // CAPTURE PREVIEW - calculatePossibleMoves' new lookahead, checked
+        // BEFORE any move is chosen, not after. This is what lets a
+        // MOVE_OPTIONS response tell the frontend "this move captures
+        // something" as a preview instead of only finding out afterward.
+        // =====================================================================
+
+        @Test
+        @DisplayName("a move onto an empty square is offered with willCapture false and no capturable ids")
+        void moveOption_emptyTarget_noCapturePreview() {
+            Piece mover = redPlayer.getPieces()[0];
+            stageActive(mover, 10);
+
+            List<MoveOption> options = game.getMoveExecutor()
+                    .calculatePossibleMoves(redPlayer, List.of(3));
+
+            MoveOption option = options.stream()
+                    .filter(o -> o.getPiece().equals(mover) && o.getDiceValue() == 3)
+                    .findFirst().orElseThrow();
+
+            assertThat(option.isWillCapture()).isFalse();
+            assertThat(option.getCapturablePieceIds()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("a move that would land on one enemy piece previews willCapture true with that piece's id - before the piece has actually moved")
+        void moveOption_singleCapturableTarget_previewsCapture() {
+            Piece mover = redPlayer.getPieces()[0];
+            stageActive(mover, 10);
+            Position landing = mover.calculateNewPosition(3);
+
+            Piece target = bluePlayer.getPieces()[0];
+            stageActiveAt(target, landing, 10);
+
+            List<MoveOption> options = game.getMoveExecutor()
+                    .calculatePossibleMoves(redPlayer, List.of(3));
+
+            MoveOption option = options.stream()
+                    .filter(o -> o.getPiece().equals(mover) && o.getDiceValue() == 3)
+                    .findFirst().orElseThrow();
+
+            assertThat(option.isWillCapture()).isTrue();
+            assertThat(option.getCapturablePieceIds()).containsExactly(target.getId());
+            // The lookahead must not have actually moved anything.
+            assertThat(mover.getPathPosition()).isEqualTo(10);
+            assertThat(target.getBoardPosition()).isEqualTo(landing);
+        }
+
+        @Test
+        @DisplayName("a move that would land on a stack of two enemy pieces previews both capturable ids")
+        void moveOption_multipleCapturableTargets_previewsBoth() {
+            Piece mover = redPlayer.getPieces()[0];
+            stageActive(mover, 10);
+            Position landing = mover.calculateNewPosition(3);
+
+            Piece target1 = bluePlayer.getPieces()[0];
+            Piece target2 = bluePlayer.getPieces()[1];
+            stageActiveAt(target1, landing, 10);
+            stageActiveAt(target2, landing, 12);
+
+            List<MoveOption> options = game.getMoveExecutor()
+                    .calculatePossibleMoves(redPlayer, List.of(3));
+
+            MoveOption option = options.stream()
+                    .filter(o -> o.getPiece().equals(mover) && o.getDiceValue() == 3)
+                    .findFirst().orElseThrow();
+
+            assertThat(option.isWillCapture()).isTrue();
+            assertThat(option.getCapturablePieceIds()).containsExactlyInAnyOrder(target1.getId(), target2.getId());
         }
     }
 

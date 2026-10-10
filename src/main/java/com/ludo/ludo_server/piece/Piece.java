@@ -159,26 +159,33 @@ public class Piece {
      * @return true if this piece can capture the other piece, false otherwise.
      */
     public boolean canCapture(Player player, Piece otherPiece) {
+        return eligibleToCapture(player, otherPiece)
+                && this.currentBoardPosition.equals(otherPiece.currentBoardPosition);
+    }
 
+    /**
+     * Same capture eligibility rules as canCapture, minus the position
+     * check - for speculative lookahead before this piece has actually
+     * moved, where the caller already knows the prospective position via
+     * some other means (e.g. board.getPiecesAt on a not-yet-moved-to
+     * square) instead of this.currentBoardPosition.
+     */
+    public boolean canCaptureAt(Player player, Piece otherPiece) {
+        return eligibleToCapture(player, otherPiece);
+    }
 
-        // A piece cannot capture itself or a piece of the same color.
+    private boolean eligibleToCapture(Player player, Piece otherPiece) {
         if (this.equals(otherPiece) || this.color == otherPiece.color) {
             return false;
         }
 
-        //A piece cnnot capture another if they have the same player
         if (Arrays.asList(player.getPieces()).contains(otherPiece)) {
             return false;
         }
 
         // Pieces at home or finished cannot be captured or capture.
-        if (this.isAtHome() || this.isFinished() ||
-                otherPiece.isAtHome() || otherPiece.isFinished()) { // Pieces in safe zones cannot be captured
-            return false;
-        }
-
-        // Can capture if both pieces are at the same board coordinates.
-        return this.currentBoardPosition.equals(otherPiece.currentBoardPosition);
+        return !this.isAtHome() && !this.isFinished()
+                && !otherPiece.isAtHome() && !otherPiece.isFinished();
     }
 
     /**

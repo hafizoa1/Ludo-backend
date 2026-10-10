@@ -46,7 +46,9 @@ public class MoveExecutor {
         if (availableDice.contains(6)) {
             List<Piece> homePieces = currentPlayer.getHomePieces();
             for (Piece piece : homePieces) {
-                moveOptions.add(new MoveOption(currentPlayer, piece, 6, MoveType.BRING_OUT));
+                Position target = piece.getStartingPosition();
+                List<Piece> capturable = findCapturablePiecesAt(currentPlayer, piece, target);
+                moveOptions.add(new MoveOption(currentPlayer, piece, 6, MoveType.BRING_OUT, capturable));
             }
         }
 
@@ -55,12 +57,48 @@ public class MoveExecutor {
         for (Piece piece : activePieces) {
             for (Integer diceValue : availableDice) {
                 if (piece.canMove(diceValue)) {
-                    moveOptions.add(new MoveOption(currentPlayer, piece, diceValue, MoveType.NORMAL));
+                    Position target = piece.calculateNewPosition(diceValue);
+                    List<Piece> capturable = findCapturablePiecesAt(currentPlayer, piece, target);
+                    moveOptions.add(new MoveOption(currentPlayer, piece, diceValue, MoveType.NORMAL, capturable));
                 }
             }
         }
 
         return moveOptions;
+    }
+
+    /**
+     * Non-mutating lookahead: which enemy pieces (if any) would be
+     * capturable if the given piece landed on the given position. Mirrors
+     * checkForCaptures' own logic (same getPiecesAt + canCapture check) but
+     * runs speculatively, before a move is chosen or the board is touched -
+     * this is what lets a MOVE_OPTIONS response tell the frontend "this
+     * move captures something" before the player commits to it, instead of
+     * only finding out after.
+     *
+     * Deliberately not reusing checkForCaptures' "size == 1 means it's just
+     * the moving piece itself" early exit - that only holds true *after*
+     * the piece has actually moved there. Here the piece hasn't moved yet,
+     * so a single piece already occupying the target is a real, distinct
+     * candidate to check, not the mover.
+     */
+    private List<Piece> findCapturablePiecesAt(Player player, Piece movingPiece, Position position) {
+        List<Piece> piecesAtPosition = board.getPiecesAt(position.row(), position.col());
+
+        if (piecesAtPosition.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<Piece> capturablePieces = new ArrayList<>();
+        for (Piece otherPiece : piecesAtPosition) {
+            // canCaptureAt, not canCapture - movingPiece hasn't moved to
+            // `position` yet, so canCapture's own position check would
+            // compare the wrong (pre-move) coordinates.
+            if (movingPiece.canCaptureAt(player, otherPiece)) {
+                capturablePieces.add(otherPiece);
+            }
+        }
+        return capturablePieces;
     }
 
     /**
@@ -147,9 +185,15 @@ public class MoveExecutor {
         // Report what's being offered (as MoveOptions, same shape as a normal
         // move choice) before sending the message, so the snapshot attached
         // to that message already reflects these as the current options.
+        //
+        // piece is always capturingPiece here - previously this used
+        // `capturable` (the piece ABOUT to be captured) as the subject,
+        // which made generateDescription() read backwards ("{victim}:
+        // Capture this piece"), as if the victim were capturing itself.
+        // The actual target is now carried in capturablePieceIds instead.
         List<MoveOption> captureChoices = new ArrayList<>();
         for (Piece capturable : capturablePieces) {
-            captureChoices.add(new MoveOption(player, capturable, 0, MoveType.CAPTURE));
+            captureChoices.add(new MoveOption(player, capturingPiece, 0, MoveType.CAPTURE, List.of(capturable)));
         }
         onOptionsOffered.accept(captureChoices);
 
