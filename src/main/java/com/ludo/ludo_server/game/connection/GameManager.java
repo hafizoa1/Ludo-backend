@@ -321,6 +321,10 @@ public class GameManager {
     }
 
     public GameResponse handlePlayerChoice(String sessionId, int choice) {
+        return handlePlayerChoice(sessionId, choice, null);
+    }
+
+    public GameResponse handlePlayerChoice(String sessionId, int choice, String capturedPieceId) {
         try {
             GameRoom gameRoom = getGameRoomBySession(sessionId);
             if (gameRoom == null || gameRoom.getGame() == null) {
@@ -335,7 +339,7 @@ public class GameManager {
                     return GameResponse.error(NO_PENDING_CHOICE, "No choice currently required from you");
                 }
 
-                inputProvider.handlePlayerChoice(sessionId, choice);
+                inputProvider.handlePlayerChoice(sessionId, choice, capturedPieceId);
 
                 return GameResponse.success(CHOICE_RECEIVED, "Choice processed", null);
             }

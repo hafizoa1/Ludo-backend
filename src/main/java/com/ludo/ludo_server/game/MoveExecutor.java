@@ -105,6 +105,18 @@ public class MoveExecutor {
      * Move a piece and handle all game logic (movement, captures, etc.)
      */
     public Position movePiece(Piece piece, Player movingPlayer, int diceValue) {
+        return movePiece(piece, movingPlayer, diceValue, null);
+    }
+
+    /**
+     * preSuppliedCapturedPieceId: which enemy piece to capture, if the
+     * landing square has more than one candidate and the client already
+     * picked one as part of the same choice (Stage 2 of the move-selection
+     * redesign) - skips the blocking interactive ask in that case. Null
+     * falls back to the old interactive flow (an older client, or a square
+     * with only zero/one candidate where there's nothing to disambiguate).
+     */
+    public Position movePiece(Piece piece, Player movingPlayer, int diceValue, String preSuppliedCapturedPieceId) {
         if (piece == null) {
             logger.warn("Cannot move a null piece.");
             return null;
@@ -128,7 +140,7 @@ public class MoveExecutor {
                 board.placePiece(piece, newPosition.row(), newPosition.col());
 
                 // Check for captures at the new position
-                checkForCaptures(movingPlayer, piece, newPosition);
+                checkForCaptures(movingPlayer, piece, newPosition, preSuppliedCapturedPieceId);
             }
             return newPosition;
         } else {
@@ -139,7 +151,7 @@ public class MoveExecutor {
     /**
      * Check if the moved piece can capture any pieces at its new position
      */
-    private void checkForCaptures(Player player, Piece movingPiece, Position position) {
+    private void checkForCaptures(Player player, Piece movingPiece, Position position, String preSuppliedCapturedPieceId) {
         List<Piece> piecesAtPosition = board.getPiecesAt(position.row(), position.col());
 
         // Early exit if no other pieces at this position
@@ -160,14 +172,25 @@ public class MoveExecutor {
             return;
         }
 
-        // Handle captures based on count
         if (capturablePieces.size() == 1) {
-            // Only one piece to capture - do it automatically
             capturePiece(movingPiece, capturablePieces.get(0));
-        } else {
-            // Multiple pieces can be captured - let player choose
-            choosePieceToCapture(player, movingPiece, capturablePieces);
+            return;
         }
+
+        if (preSuppliedCapturedPieceId != null) {
+            Piece preSupplied = capturablePieces.stream()
+                    .filter(p -> p.getId().equals(preSuppliedCapturedPieceId))
+                    .findFirst()
+                    .orElse(null);
+            if (preSupplied != null) {
+                capturePiece(movingPiece, preSupplied);
+                return;
+            }
+            logger.warn("preSuppliedCapturedPieceId {} didn't match any real candidate at {} - falling back to interactive ask",
+                    preSuppliedCapturedPieceId, position);
+        }
+
+        choosePieceToCapture(player, movingPiece, capturablePieces);
     }
 
     private void choosePieceToCapture(Player player, Piece capturingPiece, List<Piece> capturablePieces) {

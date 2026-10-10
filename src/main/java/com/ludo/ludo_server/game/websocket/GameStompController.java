@@ -119,13 +119,12 @@ public class GameStompController {
     public void makeChoice(@RequestBody Map<String, Object> request, Principal user) {
         String sessionId = user.getName();
         int choice = (Integer) request.get("choice");
+        String capturedPieceId = (String) request.get("capturedPieceId");
 
-        logger.debug("[{}] Player choice: {}", sessionId, choice);
+        logger.debug("[{}] Player choice: {} (capturedPieceId: {})", sessionId, choice, capturedPieceId);
 
-        // Use your existing logic!
-        GameResponse response = gameManager.handlePlayerChoice(sessionId, choice);
+        GameResponse response = gameManager.handlePlayerChoice(sessionId, choice, capturedPieceId);
 
-        // Send response to requesting player
         messagingTemplate.convertAndSendToUser(sessionId, "/queue/response", response);
     }
 

@@ -206,7 +206,11 @@ public class Game {
             logger.debug("Selected move: {}", selectedMove.generateDescription());
             logger.debug("Using dice value: {}", selectedMove.getDiceValue());
 
-            executeMove(selectedMove);
+            String capturedPieceId = (inputProvider instanceof MultiplayerInputProvider)
+                    ? ((MultiplayerInputProvider) inputProvider).getLastCapturedPieceId()
+                    : null;
+
+            executeMove(selectedMove, capturedPieceId);
             currentOptions = new ArrayList<>(); // the offered choice has now been resolved
 
             if (broadcaster != null && gameId != null) {
@@ -228,12 +232,12 @@ public class Game {
     }
 
 
-    private void executeMove(MoveOption move) {
+    private void executeMove(MoveOption move, String capturedPieceId) {
         Piece piece = move.getPiece();
         int diceValue = move.getDiceValue();
         Player movingPlayer = move.getPlayer();
 
-        moveExecutor.movePiece(piece, movingPlayer, diceValue);
+        moveExecutor.movePiece(piece, movingPlayer, diceValue, capturedPieceId);
     }
 
     private void displayAvailableMoves(List<MoveOption> moves) {

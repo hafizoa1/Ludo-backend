@@ -35,8 +35,15 @@ public class MultiplayerInputProvider implements InputProvider {
     private Map<String, CompletableFuture<Integer>> pendingChoices = new ConcurrentHashMap<>();
     private Map<String, CompletableFuture<String>> pendingInputs = new ConcurrentHashMap<>();
 
+    // A choice can optionally arrive bundled with which capturable piece was
+    // picked (same /app/game.choice message, not a separate round trip) -
+    // stashed here by handlePlayerChoice before completing the future, read
+    // back via getLastCapturedPieceId right after getChoice returns.
+    private final Map<String, String> pendingCapturedPieceId = new ConcurrentHashMap<>();
+
     // Track current player context - set by Game class
     private ThreadLocal<Player> currentPlayer = new ThreadLocal<>();
+    private ThreadLocal<String> lastCapturedPieceId = new ThreadLocal<>();
 
     public MultiplayerInputProvider(String gameId, StompGameEventBroadcaster broadcaster, GameRoom gameRoom) {
         this.gameId = gameId;
@@ -75,6 +82,7 @@ public class MultiplayerInputProvider implements InputProvider {
 
                 if (choice >= min && choice <= max) {
                     logger.debug("Valid choice {} from {}", choice, player.getPlayerName());
+                    lastCapturedPieceId.set(pendingCapturedPieceId.remove(sessionId));
                     return choice;
                 } else {
                     logger.warn("Invalid choice {} from {}. Expected: {}-{}", choice, player.getPlayerName(), min, max);
@@ -172,13 +180,24 @@ public class MultiplayerInputProvider implements InputProvider {
     // These are called by GameMessageController when players respond
 
     public void handlePlayerChoice(String sessionId, int choice) {
+        handlePlayerChoice(sessionId, choice, null);
+    }
+
+    public void handlePlayerChoice(String sessionId, int choice, String capturedPieceId) {
         CompletableFuture<Integer> future = pendingChoices.remove(sessionId);
         if (future != null) {
             logger.debug("Processing choice {} from session {}", choice, sessionId);
+            if (capturedPieceId != null) {
+                pendingCapturedPieceId.put(sessionId, capturedPieceId);
+            }
             future.complete(choice); // This resumes the game thread!
         } else {
             logger.warn("No pending choice for session: {}", sessionId);
         }
+    }
+
+    public String getLastCapturedPieceId() {
+        return lastCapturedPieceId.get();
     }
 
     public void sendMoveOptions(String moveMessage, int max) {
@@ -282,5 +301,6 @@ public class MultiplayerInputProvider implements InputProvider {
 
         pendingChoices.clear();
         pendingInputs.clear();
+        pendingCapturedPieceId.clear();
     }
 }

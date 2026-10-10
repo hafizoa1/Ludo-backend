@@ -50,6 +50,7 @@ class GameTest {
     private static class TestInputProvider implements InputProvider {
         private final Deque<Integer> choices = new ArrayDeque<>();
         private int defaultChoice = 1;
+        private int getChoiceCallCount = 0;
 
         void willChoose(int choice) {
             choices.addLast(choice);
@@ -57,6 +58,7 @@ class GameTest {
 
         @Override
         public int getChoice(int min, int max, String prompt) {
+            getChoiceCallCount++;
             return choices.isEmpty() ? defaultChoice : choices.removeFirst();
         }
 
@@ -381,6 +383,47 @@ class GameTest {
 
             assertThat(option.isWillCapture()).isTrue();
             assertThat(option.getCapturablePieceIds()).containsExactlyInAnyOrder(target1.getId(), target2.getId());
+        }
+
+        @Test
+        @DisplayName("a pre-supplied captured piece id resolves the capture with zero interactive asks")
+        void preSuppliedCapturedPieceId_resolvesWithoutAsking() {
+            Piece mover = redPlayer.getPieces()[0];
+            stageActive(mover, 10);
+            Position landing = mover.calculateNewPosition(3);
+
+            Piece target1 = bluePlayer.getPieces()[0];
+            Piece target2 = bluePlayer.getPieces()[1];
+            stageActiveAt(target1, landing, 10);
+            stageActiveAt(target2, landing, 12);
+
+            game.getMoveExecutor().movePiece(mover, redPlayer, 3, target2.getId());
+
+            assertThat(inputProvider.getChoiceCallCount).isZero();
+            assertThat(target2.isAtHome()).isTrue();
+            assertThat(target1.isAtHome()).isFalse(); // the other candidate, untouched
+            assertThat(mover.isFinished()).isTrue(); // this ruleset's capture-finishes rule
+        }
+
+        @Test
+        @DisplayName("an unrecognized pre-supplied id falls back to the interactive ask instead of silently failing")
+        void preSuppliedCapturedPieceId_unrecognized_fallsBackToInteractive() {
+            Piece mover = redPlayer.getPieces()[0];
+            stageActive(mover, 10);
+            Position landing = mover.calculateNewPosition(3);
+
+            Piece target1 = bluePlayer.getPieces()[0];
+            Piece target2 = bluePlayer.getPieces()[1];
+            stageActiveAt(target1, landing, 10);
+            stageActiveAt(target2, landing, 12);
+
+            inputProvider.willChoose(2); // the fallback's interactive answer: pick target2
+
+            game.getMoveExecutor().movePiece(mover, redPlayer, 3, "not-a-real-piece-id");
+
+            assertThat(inputProvider.getChoiceCallCount).isEqualTo(1);
+            assertThat(target2.isAtHome()).isTrue();
+            assertThat(target1.isAtHome()).isFalse();
         }
     }
 
