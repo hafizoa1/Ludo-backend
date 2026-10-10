@@ -118,7 +118,13 @@ public class GameRoom {
 
     // Enhanced startGame method
     public void startGame() {
-        List<Player> players = new ArrayList<>(sessionToPlayer.values());
+        // sessionToPlayer is a ConcurrentHashMap - .values() gives no
+        // ordering guarantee at all, so who went first was effectively
+        // random. sessionIds is the actual append-only join order.
+        List<Player> players = new ArrayList<>();
+        for (String sessionId : sessionIds) {
+            players.add(sessionToPlayer.get(sessionId));
+        }
 
         // Pass 'this' (the GameRoom) to the input provider
         MultiplayerInputProvider inputProvider = new MultiplayerInputProvider(this.gameId, this.broadcaster, this);

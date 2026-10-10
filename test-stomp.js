@@ -59,7 +59,11 @@ client.connect({ 'login': userId }, function(frame) {
     console.log('3. Type "roll" to roll dice');
     console.log('4. Type "choice N" to make choice');
     console.log('5. Type "state" to get game state');
-    console.log('6. Type "exit" to quit\n');
+    console.log('6. Type "exit" to quit');
+    console.log('--- dev-only debug commands (need the server on the dev profile) ---');
+    console.log('7. Type "setdice D1 D2" to force the next roll');
+    console.log('8. Type "stage PIECE_ID PATH_POS [ROW COL]" to place a piece - ROW/COL optional override');
+    console.log('9. Type "whereis COLOR PATH_POS" to look up a square without tracing the board by hand\n');
 
     // Handle user input
     process.stdin.setEncoding('utf8');
@@ -88,6 +92,27 @@ client.connect({ 'login': userId }, function(frame) {
         } else if (command === 'state') {
             console.log('📊 Getting game state...');
             client.send('/app/game.state', {}, JSON.stringify({}));
+
+        } else if (command.startsWith('setdice ')) {
+            const [die1, die2] = command.split(' ').slice(1).map(Number);
+            console.log(`🎲 [DEBUG] Forcing next roll to ${die1}, ${die2}...`);
+            client.send('/app/game.debug.setDice', {}, JSON.stringify({ gameId: currentGameId, die1, die2 }));
+
+        } else if (command.startsWith('stage ')) {
+            const parts = command.split(' ').slice(1);
+            const [pieceId, pathPosition, row, col] = parts;
+            const payload = { gameId: currentGameId, pieceId, pathPosition: Number(pathPosition) };
+            if (row !== undefined && col !== undefined) {
+                payload.row = Number(row);
+                payload.col = Number(col);
+            }
+            console.log(`📍 [DEBUG] Staging ${pieceId} at pathPosition ${pathPosition}${row !== undefined ? ` -> square (${row}, ${col})` : ''}...`);
+            client.send('/app/game.debug.stagePiece', {}, JSON.stringify(payload));
+
+        } else if (command.startsWith('whereis ')) {
+            const [color, pathPosition] = command.split(' ').slice(1);
+            console.log(`❓ [DEBUG] Looking up ${color} at pathPosition ${pathPosition}...`);
+            client.send('/app/game.debug.whereIs', {}, JSON.stringify({ color, pathPosition: Number(pathPosition) }));
 
         } else if (command === 'exit') {
             console.log('👋 Disconnecting...');

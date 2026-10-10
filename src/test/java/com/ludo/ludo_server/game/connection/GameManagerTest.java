@@ -156,6 +156,19 @@ class GameManagerTest {
         }
 
         @Test
+        @DisplayName("the room's creator moves first, deterministically - not whoever a hash map happens to iterate to first")
+        void startGame_creatorMovesFirst() {
+            GameManager gameManager = newGameManager(30);
+            String gameId = extractGameId(gameManager.createGame("session1", "player1id"));
+            gameManager.joinGame("session2", gameId, "player2id");
+
+            GameRoom gameRoom = gameManager.getGameRoom(gameId);
+            String firstMoverSessionId = gameRoom.getSessionIdForPlayer(gameRoom.getGame().getCurrentPlayer());
+
+            assertThat(firstMoverSessionId).isEqualTo("session1");
+        }
+
+        @Test
         @DisplayName("a third distinct player cannot join a full room")
         void joinGame_fullRoom_fails() {
             GameManager gameManager = newGameManager(30);

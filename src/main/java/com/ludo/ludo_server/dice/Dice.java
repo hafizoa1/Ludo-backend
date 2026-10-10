@@ -25,6 +25,11 @@ public class Dice { // we want to calculate if the die is used or not
     private int die2;
 
 
+    // set by setValues, consumed (and cleared) by the next roll() - without
+    // this, roll() unconditionally overwrites whatever setValues just set,
+    // since every real /app/game.roll call always calls roll().
+    private boolean pinned = false;
+
     public Dice() {
         this.random = new Random();
         this.die1 = 0;
@@ -32,19 +37,26 @@ public class Dice { // we want to calculate if the die is used or not
     }
 
     /**
-     * Roll both dice
+     * Roll both dice - unless a value was pinned via setValues, in which
+     * case this consumes that pin instead of actually rolling.
      */
     public void roll() {
+        if (pinned) {
+            pinned = false;
+            return;
+        }
         die1 = random.nextInt(6) + 1;
         die2 = random.nextInt(6) + 1;
     }
 
     /**
-     * Force specific values instead of rolling - for deterministic tests only.
+     * Force specific values for the next roll() call only - for
+     * deterministic tests/debugging.
      */
     public void setValues(int die1, int die2) {
         this.die1 = die1;
         this.die2 = die2;
+        this.pinned = true;
     }
 
     /**
